@@ -10,6 +10,12 @@ var global_allocator: std.mem.Allocator = undefined;
 
 var click_count: u32 = 0;
 
+const AppWidgets = struct {
+    list_box: *c.GtkListBox,
+    entry: *c.GtkEntry,
+    label: *c.GtkLabel,
+};
+
 fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
 
@@ -29,6 +35,20 @@ fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_window_set_title(@as(*c.GtkWindow, @ptrCast(window)), "GTK4 + Zig Example");
     c.gtk_window_set_default_size(@as(*c.GtkWindow, @ptrCast(window)), 300, 200);
 
+    // Create a vertical box to hold the button and label
+    const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
+    c.gtk_widget_set_margin_start(box, 10);
+    c.gtk_widget_set_margin_end(box, 10);
+    c.gtk_widget_set_margin_top(box, 10);
+    c.gtk_widget_set_margin_bottom(box, 10);
+
+    // Create a scrolled window to contain the list box
+    const scrolled_window = c.gtk_scrolled_window_new();
+    c.gtk_widget_set_vexpand(scrolled_window, 1);
+
+    const list_box = c.gtk_list_box_new();
+    c.gtk_scrolled_window_set_child(@as(*c.GtkScrolledWindow, @ptrCast(scrolled_window)), list_box);
+
     const entry = c.gtk_entry_new();
     c.gtk_entry_set_placeholder_text(@as(*c.GtkEntry, @ptrCast(entry)), "Insert table name...");
     c.gtk_widget_set_margin_start(entry, 10);
@@ -45,12 +65,12 @@ fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
 
     // Create a label
     const label = c.gtk_label_new("Button not clicked yet");
+
+    c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), scrolled_window);
     c.gtk_widget_set_margin_start(label, 10);
     c.gtk_widget_set_margin_end(label, 10);
     c.gtk_widget_set_margin_bottom(label, 10);
 
-    // Create a vertical box to hold the button and label
-    const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
     // c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), text);
     c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), entry);
     c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), button);
@@ -59,31 +79,50 @@ fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     // Set the window's child to the box
     c.gtk_window_set_child(@as(*c.GtkWindow, @ptrCast(window)), box);
 
-    // Connect the "clicked" signal of the button to callback
-    const button_data = global_allocator.create(ButtonData) catch unreachable;
-    button_data.* = ButtonData{
+    const widgets = global_allocator.create(AppWidgets) catch unreachable;
+    widgets.* = AppWidgets{
+        .list_box = @as(*c.GtkListBox, @ptrCast(list_box)),
         .entry = @as(*c.GtkEntry, @ptrCast(entry)),
         .label = @as(*c.GtkLabel, @ptrCast(label)),
     };
-    _ = c.g_signal_connect_data(button, "clicked", @as(c.GCallback, @ptrCast(&button_clicked)), @ptrCast(button_data), null, c.G_CONNECT_AFTER);
+    // Connect the "clicked" signal of the button to callback
+    // This is called after GTK default handler (G_CONNECT_AFTER) with this we can access to "etry" gtk obejct
+    _ = c.g_signal_connect_data(button, "clicked", @as(c.GCallback, @ptrCast(&button_clicked)), @ptrCast(widgets), null, c.G_CONNECT_AFTER);
+
+    var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
+        std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
+        c.gtk_label_set_text(widgets.label, "Error creating DynamoDbClient");
+        return;
+    };
+    var tables = dynamo_client.listTables() catch |e| {
+        std.debug.print("Error listing tables {}", .{e});
+        return;
+    };
+    defer tables.deinit(global_allocator);
+    std.debug.print("Tables main {any}\n", .{tables});
+
+    for (tables.TableNames.items) |table| {
+        const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
+            std.debug.print("Error duplicating table name: {}\n", .{e});
+            return;
+        };
+        defer global_allocator.free(c_table_name);
+        std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
+        const list_item = c.gtk_label_new(c_table_name);
+        c.gtk_list_box_insert(widgets.list_box, list_item, -1);
+
+        // Make sure the new item is visible
+        c.gtk_widget_show(list_item);
+    }
 
     c.gtk_window_present(@as(*c.GtkWindow, @ptrCast(window)));
 }
 
-const UserData = struct {
-    allocator: std.mem.Allocator,
-};
-
-const ButtonData = struct {
-    entry: *c.GtkEntry,
-    label: *c.GtkLabel,
-};
-
-fn button_clicked(button: *c.GtkButton, data: *ButtonData) callconv(.C) void {
+fn button_clicked(button: *c.GtkButton, widgets: *AppWidgets) callconv(.C) void {
     _ = button;
     std.debug.print("Button clicked\n", .{});
 
-    const buffer = c.gtk_entry_get_buffer(data.entry);
+    const buffer = c.gtk_entry_get_buffer(widgets.entry);
     const text = c.gtk_entry_buffer_get_text(buffer);
     if (text != null and c.gtk_entry_buffer_get_length(buffer) > 0) {
         const table_name = std.mem.span(text);
@@ -91,23 +130,52 @@ fn button_clicked(button: *c.GtkButton, data: *ButtonData) callconv(.C) void {
 
         var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
             std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
-            c.gtk_label_set_text(data.label, "Error creating DynamoDbClient");
+            c.gtk_label_set_text(widgets.label, "Error creating DynamoDbClient");
             return;
         };
         defer dynamo_client.deinit();
 
         dynamo_client.createTable(table_name, "id") catch |e| {
             std.debug.print("Error creating table: {}\n", .{e});
-            c.gtk_label_set_text(data.label, "Error creating table");
+            c.gtk_label_set_text(widgets.label, "Error creating table");
             return;
         };
 
         std.debug.print("Table created successfully\n", .{});
-        c.gtk_label_set_text(data.label, "Table created successfully");
+        c.gtk_label_set_text(widgets.label, "Table created successfully");
+
+        c.gtk_list_box_remove_all(widgets.list_box);
+        var tables = dynamo_client.listTables() catch |e| {
+            std.debug.print("Error listing tables {}", .{e});
+            return;
+        };
+        defer tables.deinit(global_allocator);
+        std.debug.print("Tables main {any}\n", .{tables});
+
+        for (tables.TableNames.items) |table| {
+            const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
+                std.debug.print("Error duplicating table name: {}\n", .{e});
+                return;
+            };
+            defer global_allocator.free(c_table_name);
+            std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
+            const list_item = c.gtk_label_new(c_table_name);
+            c.gtk_list_box_insert(widgets.list_box, list_item, -1);
+
+            // Make sure the new item is visible
+            c.gtk_widget_show(list_item);
+        }
+        c.gtk_entry_buffer_set_text(buffer, "", 0);
     } else {
         std.debug.print("No text entered\n", .{});
-        c.gtk_label_set_text(data.label, "No table name entered");
+        c.gtk_label_set_text(widgets.label, "No table name entered");
     }
+}
+fn createNullTerminatedString(allocator: std.mem.Allocator, str: []const u8) ![:0]u8 {
+    var null_terminated = try allocator.alloc(u8, str.len + 1);
+    @memcpy(null_terminated[0..str.len], str);
+    null_terminated[str.len] = 0;
+    return null_terminated[0..str.len :0];
 }
 
 fn debug_handler(
