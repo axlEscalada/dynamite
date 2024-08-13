@@ -10,90 +10,78 @@ var global_allocator: std.mem.Allocator = undefined;
 
 var click_count: u32 = 0;
 
-const AppWidgets = struct {
-    list_box: *c.GtkListBox,
-    entry: *c.GtkEntry,
-    label: *c.GtkLabel,
+const MainWindow = struct {
+    window: ?*c.GtkWindow,
+    stack: ?*c.GtkStack,
+    list_box: ?*c.GtkListBox,
+    create_button: ?*c.GtkButton,
+    entry: ?*c.GtkEntry,
+    confirm_button: ?*c.GtkButton,
+    back_button: ?*c.GtkButton,
+    label: ?*c.GtkLabel,
 };
 
-fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
+var main_window: MainWindow = undefined;
+
+fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
 
-    std.debug.print("Activate function called\n", .{});
-    if (c.gtk_init_check() == 0) {
-        std.debug.print("Failed to initialize GTK\n", .{});
-        return;
-    }
-
-    // Create a new window
-    const window = c.gtk_application_window_new(app);
-    if (window == null) {
-        std.debug.print("Failed to create GtkApplicationWindow\n", .{});
-        return;
-    }
-
-    c.gtk_window_set_title(@as(*c.GtkWindow, @ptrCast(window)), "GTK4 + Zig Example");
-    c.gtk_window_set_default_size(@as(*c.GtkWindow, @ptrCast(window)), 300, 200);
-
-    // Create a vertical box to hold the button and label
-    const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
-    c.gtk_widget_set_margin_start(box, 10);
-    c.gtk_widget_set_margin_end(box, 10);
-    c.gtk_widget_set_margin_top(box, 10);
-    c.gtk_widget_set_margin_bottom(box, 10);
-
-    // Create a scrolled window to contain the list box
-    const scrolled_window = c.gtk_scrolled_window_new();
-    c.gtk_widget_set_vexpand(scrolled_window, 1);
-
-    const list_box = c.gtk_list_box_new();
-    c.gtk_scrolled_window_set_child(@as(*c.GtkScrolledWindow, @ptrCast(scrolled_window)), list_box);
-
-    const entry = c.gtk_entry_new();
-    c.gtk_entry_set_placeholder_text(@as(*c.GtkEntry, @ptrCast(entry)), "Insert table name...");
-    c.gtk_widget_set_margin_start(entry, 10);
-    c.gtk_widget_set_margin_end(entry, 10);
-    c.gtk_widget_set_margin_top(entry, 10);
-    c.gtk_widget_set_margin_bottom(entry, 10);
-
-    // Create a button
-    const button = c.gtk_button_new_with_label("Create table");
-    c.gtk_widget_set_margin_start(button, 10);
-    c.gtk_widget_set_margin_end(button, 10);
-    c.gtk_widget_set_margin_top(button, 10);
-    c.gtk_widget_set_margin_bottom(button, 10);
-
-    // Create a label
-    const label = c.gtk_label_new("Button not clicked yet");
-
-    c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), scrolled_window);
-    c.gtk_widget_set_margin_start(label, 10);
-    c.gtk_widget_set_margin_end(label, 10);
-    c.gtk_widget_set_margin_bottom(label, 10);
-
-    // c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), text);
-    c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), entry);
-    c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), button);
-    c.gtk_box_append(@as(*c.GtkBox, @ptrCast(box)), label);
-
-    // Set the window's child to the box
-    c.gtk_window_set_child(@as(*c.GtkWindow, @ptrCast(window)), box);
-
-    const widgets = global_allocator.create(AppWidgets) catch unreachable;
-    widgets.* = AppWidgets{
-        .list_box = @as(*c.GtkListBox, @ptrCast(list_box)),
-        .entry = @as(*c.GtkEntry, @ptrCast(entry)),
-        .label = @as(*c.GtkLabel, @ptrCast(label)),
+    main_window = MainWindow{
+        .window = @ptrCast(c.gtk_application_window_new(app)),
+        .stack = @ptrCast(c.gtk_stack_new()),
+        .list_box = @ptrCast(c.gtk_list_box_new()),
+        .create_button = @ptrCast(c.gtk_button_new_with_label("Create Table")),
+        .entry = @ptrCast(c.gtk_entry_new()),
+        .confirm_button = @ptrCast(c.gtk_button_new_with_label("Create")),
+        .back_button = @ptrCast(c.gtk_button_new_with_label("Back")),
+        .label = @ptrCast(c.gtk_label_new(null)),
     };
-    // Connect the "clicked" signal of the button to callback
-    // This is called after GTK default handler (G_CONNECT_AFTER) with this we can access to "etry" gtk obejct
-    _ = c.g_signal_connect_data(button, "clicked", @as(c.GCallback, @ptrCast(&button_clicked)), @ptrCast(widgets), null, c.G_CONNECT_AFTER);
+
+    c.gtk_window_set_title(main_window.window, "Dynamite");
+    c.gtk_window_set_default_size(main_window.window, 300, 400);
+    c.gtk_entry_set_placeholder_text(main_window.entry, "Insert table name...");
+
+    const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
+    c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
+    c.gtk_widget_set_margin_end(@ptrCast(main_box), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(main_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(main_box), 10);
+
+    const scrolled_window = c.gtk_scrolled_window_new();
+    c.gtk_scrolled_window_set_child(@ptrCast(scrolled_window), @alignCast(@ptrCast(main_window.list_box)));
+    c.gtk_widget_set_vexpand(@ptrCast(scrolled_window), 1);
+
+    c.gtk_box_append(@ptrCast(main_box), @ptrCast(scrolled_window));
+    c.gtk_widget_set_margin_top(@ptrCast(main_window.create_button), 10);
+    c.gtk_box_append(@ptrCast(main_box), @ptrCast(main_window.create_button));
+
+    const create_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
+    c.gtk_widget_set_margin_start(@ptrCast(create_box), 10);
+    c.gtk_widget_set_margin_end(@ptrCast(create_box), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(create_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(create_box), 10);
+
+    c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.entry));
+    c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
+    c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
+    c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.back_button));
+
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(create_box), "create");
+
+    c.gtk_window_set_child(main_window.window, @alignCast(@ptrCast(main_window.stack)));
+
+    _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
+    _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
+    _ = c.g_signal_connect_data(@ptrCast(main_window.back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
-        c.gtk_label_set_text(widgets.label, "Error creating DynamoDbClient");
         return;
     };
+    defer dynamo_client.deinit();
+
+    c.gtk_list_box_remove_all(@ptrCast(main_window.list_box));
     var tables = dynamo_client.listTables() catch |e| {
         std.debug.print("Error listing tables {}", .{e});
         return;
@@ -109,20 +97,33 @@ fn activate(app: *c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
         defer global_allocator.free(c_table_name);
         std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
         const list_item = c.gtk_label_new(c_table_name);
-        c.gtk_list_box_insert(widgets.list_box, list_item, -1);
+        c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
 
-        // Make sure the new item is visible
         c.gtk_widget_show(list_item);
     }
 
-    c.gtk_window_present(@as(*c.GtkWindow, @ptrCast(window)));
+    c.gtk_widget_show(@ptrCast(main_window.window));
 }
 
-fn button_clicked(button: *c.GtkButton, widgets: *AppWidgets) callconv(.C) void {
+fn switchToCreateView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+    _ = button;
+    _ = user_data;
+    c.gtk_stack_set_visible_child_name(main_window.stack, "create");
+}
+
+fn switchToMainView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+    _ = button;
+    _ = user_data;
+    c.gtk_stack_set_visible_child_name(main_window.stack, "main");
+}
+
+fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void {
+    std.debug.print("Open create table window\n", .{});
+    _ = user_data;
     _ = button;
     std.debug.print("Button clicked\n", .{});
 
-    const buffer = c.gtk_entry_get_buffer(widgets.entry);
+    const buffer = c.gtk_entry_get_buffer(main_window.entry);
     const text = c.gtk_entry_buffer_get_text(buffer);
     if (text != null and c.gtk_entry_buffer_get_length(buffer) > 0) {
         const table_name = std.mem.span(text);
@@ -130,21 +131,21 @@ fn button_clicked(button: *c.GtkButton, widgets: *AppWidgets) callconv(.C) void 
 
         var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
             std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
-            c.gtk_label_set_text(widgets.label, "Error creating DynamoDbClient");
+            c.gtk_label_set_text(main_window.label, "Error creating DynamoDbClient");
             return;
         };
         defer dynamo_client.deinit();
 
         dynamo_client.createTable(table_name, "id") catch |e| {
             std.debug.print("Error creating table: {}\n", .{e});
-            c.gtk_label_set_text(widgets.label, "Error creating table");
+            c.gtk_label_set_text(main_window.label, "Error creating table");
             return;
         };
 
         std.debug.print("Table created successfully\n", .{});
-        c.gtk_label_set_text(widgets.label, "Table created successfully");
+        c.gtk_label_set_text(main_window.label, "Table created successfully");
 
-        c.gtk_list_box_remove_all(widgets.list_box);
+        c.gtk_list_box_remove_all(main_window.list_box);
         var tables = dynamo_client.listTables() catch |e| {
             std.debug.print("Error listing tables {}", .{e});
             return;
@@ -160,7 +161,7 @@ fn button_clicked(button: *c.GtkButton, widgets: *AppWidgets) callconv(.C) void 
             defer global_allocator.free(c_table_name);
             std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
             const list_item = c.gtk_label_new(c_table_name);
-            c.gtk_list_box_insert(widgets.list_box, list_item, -1);
+            c.gtk_list_box_insert(main_window.list_box, list_item, -1);
 
             // Make sure the new item is visible
             c.gtk_widget_show(list_item);
@@ -168,14 +169,17 @@ fn button_clicked(button: *c.GtkButton, widgets: *AppWidgets) callconv(.C) void 
         c.gtk_entry_buffer_set_text(buffer, "", 0);
     } else {
         std.debug.print("No text entered\n", .{});
-        c.gtk_label_set_text(widgets.label, "No table name entered");
+        c.gtk_label_set_text(main_window.label, "No table name entered");
     }
-}
-fn createNullTerminatedString(allocator: std.mem.Allocator, str: []const u8) ![:0]u8 {
-    var null_terminated = try allocator.alloc(u8, str.len + 1);
-    @memcpy(null_terminated[0..str.len], str);
-    null_terminated[str.len] = 0;
-    return null_terminated[0..str.len :0];
+
+    // const table_name = c.gtk_entry_buffer_get_text(c.gtk_entry_get_buffer(main_window.entry));
+    // std.debug.print("Creating table: {s}\n", .{table_name});
+    //
+    //
+    // const list_item = c.gtk_label_new(table_name);
+    // c.gtk_list_box_append(main_window.list_box, @ptrCast(list_item));
+
+    c.gtk_entry_buffer_set_text(c.gtk_entry_get_buffer(main_window.entry), "", 0);
 }
 
 fn debug_handler(
@@ -204,8 +208,6 @@ pub fn main() !void {
 
     // Enable GTK debugging
     _ = c.g_setenv("G_MESSAGES_DEBUG", "all", 1);
-
-    // Set up custom debug handler
     _ = c.g_log_set_handler("Gtk", c.G_LOG_LEVEL_MASK, debug_handler, null);
     _ = c.g_log_set_handler("GLib", c.G_LOG_LEVEL_MASK, debug_handler, null);
     _ = c.g_log_set_handler("Gdk", c.G_LOG_LEVEL_MASK, debug_handler, null);
