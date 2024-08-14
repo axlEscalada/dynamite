@@ -41,6 +41,12 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_window_set_title(main_window.window, "Dynamite");
     c.gtk_window_set_default_size(main_window.window, 300, 400);
     c.gtk_entry_set_placeholder_text(main_window.entry, "Insert table name...");
+    //This is not building in macos
+    // const header_bar = c.gtk_header_bar_new();
+    // c.gtk_window_set_titlebar(c.GTK_WINDOW(main_window.window), header_bar);
+
+    // c.gtk_header_bar_set_title_widget(c.GTK_HEADER_BAR(header_bar), "Dynamite");
+    // c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);

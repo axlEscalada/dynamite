@@ -1,0 +1,3 @@
+.localstack/
+.zig-cache/
+zig-out/
