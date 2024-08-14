@@ -47,6 +47,9 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const title_label = c.gtk_label_new("Dynamite");
     c.gtk_window_set_titlebar(GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
     c.gtk_header_bar_set_title_widget(GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
+    // const header_close_button = c.gtk_button_new_with_label("X");
+    // c.gtk_widget_add_css_class(header_close_button, "header-close-button");
+    // c.gtk_header_bar_pack_start(@ptrCast(header_bar), header_close_button);
     c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);

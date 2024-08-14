@@ -1,64 +1,99 @@
-button.circular {
-  border-radius: 4px;
-  padding: 8px;
-  min-width: 12px;
-  min-height: 12px;
-  box-shadow: none;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  background-color: #1d1d1d;
+/* General reset to override platform-specific styles */
+* {
+  -gtk-icon-style: regular;
+  -GtkWidget-focus-padding: 0;
+  -GtkWidget-focus-line-width: 0;
 }
 
-button.circular:hover {
+/* Header styles */
+headerbar,
+.header {
+  background-color: #1d1d1d ;
+  color: #ffffff ;
+  border-bottom: 1px solid #0f0f0f ;
+  padding: 1px ;
+  min-height: 30px ;
+}
+
+headerbar .title,
+.header .title {
+  font-weight: bold ;
+  font-size: 14px ;
+  color: #ffffff ;
+}
+
+headerbar .subtitle,
+.header .subtitle {
+  font-size: 12px ;
+  color: #666666 ;
+}
+
+/* Button styles */
+button.circular,
+headerbar button,
+.header button {
+  border-radius: 4px ;
+  padding: 8px ;
+  min-width: 12px ;
+  min-height: 12px ;
+  box-shadow: none ;
+  border: 1px solid rgba(0, 0, 0, 0.2) ;
+  background-color: #1d1d1d ;
+  color: #ffffff ;
+  outline: none ;
+}
+
+button.circular:hover,
+headerbar button:hover,
+.header button:hover {
   background-color: #3d3d3d;
 }
 
-button.circular:active {
+button.circular:active,
+headerbar button:active,
+.header button:active {
   background-color: #2d2d2d;
 }
 
-.header {
+/* Ensure default button styles are overridden */
+button.circular:not(:hover):not(:active),
+headerbar button:not(:hover):not(:active),
+.header button:not(:hover):not(:active) {
   background-color: #1d1d1d;
-  color: #ffffff;
-  border-bottom: 1px solid #0f0f0f;
-  padding: 2px;
+  color: #ffffff; 
 }
-
-.header .title {
-  font-weight: bold;
-  font-size: 16px;
-}
-
-.header .subtitle {
-  font-size: 14px;
-  color: #666666;
-}
-
-.header button {
-  background-color: #1d1d1d;
-  color: #333333;
-  border: none;
-  padding: 2px 4px;
-  border-radius: 4px;
-  margin-right: 4px;
-}
-
-.header button:hover {
-  background-color: #d0d0d0;
-}
-
-.header button:active {
-  background-color: #c0c0c0;
-}
-
-.header .close {
-  background-color: #ff4444;
-  color: #ffffff;
-}
-
-.header .close:hover {
-  background-color: #ff6666;
-}
-
-.header .close:active {
-  background-color: #ff2222;
-}
+/* button.circular { */
+/*   border-radius: 4px; */
+/*   padding: 8px; */
+/*   min-width: 12px; */
+/*   min-height: 12px; */
+/*   box-shadow: none; */
+/*   border: 1px solid rgba(0, 0, 0, 0.2); */
+/*   background-color: #1d1d1d; */
+/* } */
+/**/
+/* button.circular:hover { */
+/*   background-color: #3d3d3d; */
+/* } */
+/**/
+/* button.circular:active { */
+/*   background-color: #2d2d2d; */
+/* } */
+/**/
+/* .header { */
+/*   background-color: #1d1d1d; */
+/*   color: #ffffff; */
+/*   border-bottom: 1px solid #0f0f0f; */
+/*   padding: 1px; /* Reduced padding to decrease height */ */
+/*   min-height: 30px; /* Set a smaller minimum height */ */
+/* } */
+/**/
+/* .header .title { */
+/*   font-weight: bold; */
+/*   font-size: 14px; /* Slightly reduced font size */ */
+/* } */
+/**/
+/* .header .subtitle { */
+/*   font-size: 12px; /* Slightly reduced font size */ */
+/*   color: #666666; */
+/* } */
