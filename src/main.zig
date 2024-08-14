@@ -4,6 +4,7 @@ const c = @cImport({
 });
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
+// const gtk = @import("gtk.zig");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -41,12 +42,12 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_window_set_title(main_window.window, "Dynamite");
     c.gtk_window_set_default_size(main_window.window, 300, 400);
     c.gtk_entry_set_placeholder_text(main_window.entry, "Insert table name...");
-    //This is not building in macos
-    // const header_bar = c.gtk_header_bar_new();
-    // c.gtk_window_set_titlebar(c.GTK_WINDOW(main_window.window), header_bar);
 
-    // c.gtk_header_bar_set_title_widget(c.GTK_HEADER_BAR(header_bar), "Dynamite");
-    // c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
+    const header_bar = c.gtk_header_bar_new();
+    const title_label = c.gtk_label_new("Dynamite");
+    c.gtk_window_set_titlebar(GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
+    c.gtk_header_bar_set_title_widget(GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
+    c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
@@ -121,6 +122,22 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     }
 
     c.gtk_widget_show(@ptrCast(main_window.window));
+}
+
+pub fn GTK_TYPE_HEADER_BAR() c.GType {
+    return c.gtk_header_bar_get_type();
+}
+
+pub fn GTK_TYPE_WINDOW() c.GType {
+    return c.gtk_window_get_type();
+}
+
+fn GTK_WINDOW(ip: *c.GTypeInstance) *c.GtkWindow {
+    return @as(*c.GtkWindow, @ptrCast(c.g_type_check_instance_cast(ip, GTK_TYPE_WINDOW())));
+}
+
+fn GTK_HEADER_BAR(ip: *c.GTypeInstance) *c.GtkHeaderBar {
+    return @as(*c.GtkHeaderBar, @ptrCast(c.g_type_check_instance_cast(ip, GTK_TYPE_HEADER_BAR())));
 }
 
 fn switchToCreateView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
