@@ -1,0 +1,17 @@
+button.circular {
+  border-radius: 4px;
+  padding: 8px;
+  min-width: 12px;
+  min-height: 12px;
+  box-shadow: none;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background-color: #1d1d1d;
+}
+
+button.circular:hover {
+  background-color: #3d3d3d;
+}
+
+button.circular:active {
+  background-color: #2d2d2d;
+}

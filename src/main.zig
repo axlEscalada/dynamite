@@ -25,6 +25,7 @@ var main_window: MainWindow = undefined;
 
 fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
+    loadCss();
 
     main_window = MainWindow{
         .window = @ptrCast(c.gtk_application_window_new(app)),
@@ -64,16 +65,27 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.entry));
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
-    c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.back_button));
+    // c.gtk_box_append(@ptrCast(create_box), @ptrCast(createBackMainButton()));
+
+    const table_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
+    c.gtk_widget_set_margin_start(@ptrCast(table_box), 10);
+    c.gtk_widget_set_margin_end(@ptrCast(table_box), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(table_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(table_box), 10);
+
+    // c.gtk_box_append(@ptrCast(table_box), @ptrCast(createBackMainButton()));
 
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
-    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(create_box), "create");
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_box)), "create");
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(table_box)), "table");
+    // _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(create_box), "create");
+    // _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(table_box), "table");
 
     c.gtk_window_set_child(main_window.window, @alignCast(@ptrCast(main_window.stack)));
 
     _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
-    _ = c.g_signal_connect_data(@ptrCast(main_window.back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
+    _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), null, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
@@ -115,6 +127,84 @@ fn switchToMainView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) 
     _ = button;
     _ = user_data;
     c.gtk_stack_set_visible_child_name(main_window.stack, "main");
+}
+
+fn switchToTableView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+    _ = button;
+    _ = user_data;
+    c.gtk_stack_set_visible_child_name(main_window.stack, "table");
+}
+
+// fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
+//     const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
+//     const overlay = c.gtk_overlay_new();
+//
+//     c.gtk_overlay_set_child(@ptrCast(overlay), content);
+//     const back_button = createBackMainButton();
+//     c.gtk_overlay_add_overlay(@ptrCast(overlay), @ptrCast(back_button));
+//
+//     c.gtk_box_append(@ptrCast(box), @ptrCast(overlay));
+//     return box;
+// }
+
+fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
+    const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
+
+    const header_box = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
+    c.gtk_widget_set_margin_start(@ptrCast(header_box), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(header_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(header_box), 10);
+
+    const back_button = createBackMainButton();
+    c.gtk_box_append(@ptrCast(header_box), @ptrCast(back_button));
+
+    const spacer = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
+    c.gtk_widget_set_hexpand(@ptrCast(spacer), 1);
+    c.gtk_box_append(@ptrCast(header_box), @ptrCast(spacer));
+
+    c.gtk_box_append(@ptrCast(main_box), @ptrCast(header_box));
+
+    if (content) |widget| {
+        c.gtk_box_append(@ptrCast(main_box), widget);
+    }
+
+    return main_box;
+}
+
+fn createBackMainButton() *c.GtkWidget {
+    const back_button = c.gtk_button_new_from_icon_name("go-previous-symbolic");
+    c.gtk_widget_add_css_class(@ptrCast(back_button), "circular");
+    c.gtk_widget_set_halign(@ptrCast(back_button), c.GTK_ALIGN_START);
+    c.gtk_widget_set_valign(@ptrCast(back_button), c.GTK_ALIGN_START);
+    c.gtk_widget_set_margin_start(@ptrCast(back_button), 0);
+    c.gtk_widget_set_margin_top(@ptrCast(back_button), 0);
+    _ = c.g_signal_connect_data(@ptrCast(back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
+    return back_button;
+    // const back_button = c.gtk_button_new_with_label("Back");
+    // _ = c.g_signal_connect_data(@ptrCast(back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
+    // return back_button;
+}
+
+// fn loadCss() void {
+//     const css_data = @embedFile("css/style.css");
+//     std.debug.print("css_data: {s}\n", .{css_data});
+//     const css_provider = c.gtk_css_provider_new();
+//     c.gtk_css_provider_load_from_data(css_provider, css_data.ptr, css_data.len);
+//     c.gtk_style_context_add_provider_for_display(c.gdk_display_get_default(), @ptrCast(css_provider), c.GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+// }
+
+fn loadCss() void {
+    const css_data = @embedFile("css/style.css");
+    std.debug.print("css_data: {s}\n", .{css_data});
+    const css_provider = c.gtk_css_provider_new();
+    c.gtk_css_provider_load_from_data(css_provider, css_data, -1);
+    const display = c.gdk_display_get_default();
+    if (display != null) {
+        c.gtk_style_context_add_provider_for_display(display, @as(*c.GtkStyleProvider, @ptrCast(css_provider)), c.GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        std.debug.print("CSS loaded and applied to display\n", .{});
+    } else {
+        std.debug.print("Error: Default display not available\n", .{});
+    }
 }
 
 fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void {
@@ -163,7 +253,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
             const list_item = c.gtk_label_new(c_table_name);
             c.gtk_list_box_insert(main_window.list_box, list_item, -1);
 
-            // Make sure the new item is visible
             c.gtk_widget_show(list_item);
         }
         c.gtk_entry_buffer_set_text(buffer, "", 0);
@@ -171,13 +260,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
         std.debug.print("No text entered\n", .{});
         c.gtk_label_set_text(main_window.label, "No table name entered");
     }
-
-    // const table_name = c.gtk_entry_buffer_get_text(c.gtk_entry_get_buffer(main_window.entry));
-    // std.debug.print("Creating table: {s}\n", .{table_name});
-    //
-    //
-    // const list_item = c.gtk_label_new(table_name);
-    // c.gtk_list_box_append(main_window.list_box, @ptrCast(list_item));
 
     c.gtk_entry_buffer_set_text(c.gtk_entry_get_buffer(main_window.entry), "", 0);
 }
