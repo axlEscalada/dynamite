@@ -61,10 +61,10 @@ pub const DynamoDbClient = struct {
         const bytes_read = try self.sendRequest("POST", headers.items, json_str, response_buff);
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, response_buff[0..bytes_read] });
-        const response = try std.json.parseFromSlice(ListTablesResponse, self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
-        // defer response.deinit();
-        std.debug.print("Parsed {any}\n", .{response});
-        return response.value;
+        var parsed = try std.json.parseFromSlice(ListTablesResponse, self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+
+        return try parsed.value.copy(self.allocator);
     }
 
     pub fn putItem(self: *DynamoDbClient, table_name: []const u8, item: std.StringHashMap(DataValue)) !void {

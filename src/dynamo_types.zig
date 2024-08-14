@@ -105,6 +105,7 @@ pub const ListTablesResponse = struct {
     TableNames: ArrayList([]const u8),
     LastEvaluatedTableName: ?[]const u8 = null,
 
+    ///"Override" jsonParse, this is used by std.json when it read fields from the struct
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: json.ParseOptions) !ListTablesResponse {
         std.debug.print("parse options {any}\n", .{options});
         const ParsedResponse = struct {
@@ -141,14 +142,34 @@ pub const ListTablesResponse = struct {
     }
 
     pub fn deinit(self: *ListTablesResponse, allocator: std.mem.Allocator) void {
-        std.debug.print("Deinitializing ListTablesResponse\n", .{});
-        std.debug.print("TableNames length: {d}\n", .{self.TableNames.items.len});
-        self.TableNames.deinit();
-        if (self.LastEvaluatedTableName) |name| {
-            std.debug.print("Freeing LastEvaluatedTableName: {s}\n", .{name});
+        for (self.TableNames.items) |name| {
             allocator.free(name);
         }
-        std.debug.print("ListTablesResponse deinitialized\n", .{});
+        self.TableNames.deinit();
+        if (self.LastEvaluatedTableName) |name| {
+            allocator.free(name);
+        }
+    }
+
+    pub fn copy(self: ListTablesResponse, allocator: std.mem.Allocator) !ListTablesResponse {
+        var new_table_names = try ArrayList([]const u8).initCapacity(allocator, self.TableNames.items.len);
+        errdefer new_table_names.deinit();
+
+        for (self.TableNames.items) |name| {
+            const new_name = try allocator.dupe(u8, name);
+            errdefer allocator.free(new_name);
+            try new_table_names.append(new_name);
+        }
+
+        var new_last_evaluated_table_name: ?[]const u8 = null;
+        if (self.LastEvaluatedTableName) |last_name| {
+            new_last_evaluated_table_name = try allocator.dupe(u8, last_name);
+        }
+
+        return ListTablesResponse{
+            .TableNames = new_table_names,
+            .LastEvaluatedTableName = new_last_evaluated_table_name,
+        };
     }
 };
 
