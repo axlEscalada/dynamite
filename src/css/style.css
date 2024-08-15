@@ -1,99 +1,32 @@
-/* General reset to override platform-specific styles */
 * {
-  -gtk-icon-style: regular;
-  -GtkWidget-focus-padding: 0;
-  -GtkWidget-focus-line-width: 0;
+  background-color: #1c1c1c;
 }
 
-/* Header styles */
-headerbar,
 .header {
-  background-color: #1d1d1d ;
-  color: #ffffff ;
-  border-bottom: 1px solid #0f0f0f ;
-  padding: 1px ;
-  min-height: 30px ;
+  color: #ffffff;
+  border-bottom: 1px solid #0f0f0f;
+  padding: 0px;
+  min-height: 20px;
 }
 
-headerbar .title,
-.header .title {
-  font-weight: bold ;
-  font-size: 14px ;
-  color: #ffffff ;
-}
-
-headerbar .subtitle,
-.header .subtitle {
-  font-size: 12px ;
-  color: #666666 ;
-}
-
-/* Button styles */
-button.circular,
-headerbar button,
-.header button {
-  border-radius: 4px ;
-  padding: 8px ;
-  min-width: 12px ;
-  min-height: 12px ;
-  box-shadow: none ;
-  border: 1px solid rgba(0, 0, 0, 0.2) ;
-  background-color: #1d1d1d ;
-  color: #ffffff ;
-  outline: none ;
-}
-
-button.circular:hover,
-headerbar button:hover,
 .header button:hover {
   background-color: #3d3d3d;
 }
 
-button.circular:active,
-headerbar button:active,
-.header button:active {
-  background-color: #2d2d2d;
+.window {
+  background-color: #212121;
 }
 
-/* Ensure default button styles are overridden */
-button.circular:not(:hover):not(:active),
-headerbar button:not(:hover):not(:active),
-.header button:not(:hover):not(:active) {
-  background-color: #1d1d1d;
-  color: #ffffff; 
+.create-entry {
+  background-color: #2b2b2b;
+  color: #ffffff;
+  border: 1px solid #0f0f0f;
+  padding: 5px;
 }
-/* button.circular { */
-/*   border-radius: 4px; */
-/*   padding: 8px; */
-/*   min-width: 12px; */
-/*   min-height: 12px; */
-/*   box-shadow: none; */
-/*   border: 1px solid rgba(0, 0, 0, 0.2); */
-/*   background-color: #1d1d1d; */
-/* } */
-/**/
-/* button.circular:hover { */
-/*   background-color: #3d3d3d; */
-/* } */
-/**/
-/* button.circular:active { */
-/*   background-color: #2d2d2d; */
-/* } */
-/**/
-/* .header { */
-/*   background-color: #1d1d1d; */
-/*   color: #ffffff; */
-/*   border-bottom: 1px solid #0f0f0f; */
-/*   padding: 1px; /* Reduced padding to decrease height */ */
-/*   min-height: 30px; /* Set a smaller minimum height */ */
-/* } */
-/**/
-/* .header .title { */
-/*   font-weight: bold; */
-/*   font-size: 14px; /* Slightly reduced font size */ */
-/* } */
-/**/
-/* .header .subtitle { */
-/*   font-size: 12px; /* Slightly reduced font size */ */
-/*   color: #666666; */
-/* } */
+
+.create-button {
+  background-color: #0f0f0f;
+  color: #ffffff;
+  border: 2px solid #000000;
+  padding: 0px;
+}

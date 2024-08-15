@@ -4,7 +4,6 @@ const c = @cImport({
 });
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
-// const gtk = @import("gtk.zig");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -47,10 +46,10 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const title_label = c.gtk_label_new("Dynamite");
     c.gtk_window_set_titlebar(GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
     c.gtk_header_bar_set_title_widget(GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
+    c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
     // const header_close_button = c.gtk_button_new_with_label("X");
     // c.gtk_widget_add_css_class(header_close_button, "header-close-button");
     // c.gtk_header_bar_pack_start(@ptrCast(header_bar), header_close_button);
-    c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
@@ -72,9 +71,13 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_margin_top(@ptrCast(create_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(create_box), 10);
 
+    c.gtk_widget_add_css_class(@ptrCast(main_window.entry), "create-entry");
+    c.gtk_widget_add_css_class(@ptrCast(main_window.confirm_button), "create-button");
+    c.gtk_widget_add_css_class(@ptrCast(main_window.create_button), "create-button");
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.entry));
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
+
     // c.gtk_box_append(@ptrCast(create_box), @ptrCast(createBackMainButton()));
 
     const table_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
@@ -161,18 +164,6 @@ fn switchToTableView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C)
     c.gtk_stack_set_visible_child_name(main_window.stack, "table");
 }
 
-// fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
-//     const box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
-//     const overlay = c.gtk_overlay_new();
-//
-//     c.gtk_overlay_set_child(@ptrCast(overlay), content);
-//     const back_button = createBackMainButton();
-//     c.gtk_overlay_add_overlay(@ptrCast(overlay), @ptrCast(back_button));
-//
-//     c.gtk_box_append(@ptrCast(box), @ptrCast(overlay));
-//     return box;
-// }
-
 fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
 
@@ -206,18 +197,7 @@ fn createBackMainButton() *c.GtkWidget {
     c.gtk_widget_set_margin_top(@ptrCast(back_button), 0);
     _ = c.g_signal_connect_data(@ptrCast(back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
     return back_button;
-    // const back_button = c.gtk_button_new_with_label("Back");
-    // _ = c.g_signal_connect_data(@ptrCast(back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
-    // return back_button;
 }
-
-// fn loadCss() void {
-//     const css_data = @embedFile("css/style.css");
-//     std.debug.print("css_data: {s}\n", .{css_data});
-//     const css_provider = c.gtk_css_provider_new();
-//     c.gtk_css_provider_load_from_data(css_provider, css_data.ptr, css_data.len);
-//     c.gtk_style_context_add_provider_for_display(c.gdk_display_get_default(), @ptrCast(css_provider), c.GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-// }
 
 fn loadCss() void {
     const css_data = @embedFile("css/style.css");
