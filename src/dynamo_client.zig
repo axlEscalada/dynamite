@@ -24,7 +24,35 @@ pub const DynamoDbClient = struct {
         self.allocator.free(self.endpoint);
     }
 
-    // pub fn scanTable(self: *DynamoDbClient, table_name: []const u8) !ScanResponse {}
+    pub fn scanTable(self: *DynamoDbClient, table_name: []const u8) !void {
+        std.debug.print("allocator {any}\n", .{self.allocator});
+        var headers = std.ArrayList(std.http.Header).init(self.allocator);
+        defer headers.deinit();
+        try headers.append(.{ .name = "Content-Type", .value = "application/json" });
+        try headers.append(.{ .name = "X-Amz-Target", .value = "DynamoDB_20120810.Scan" });
+
+        const scan_request = DynamoDBScanRequest{
+            .TableName = table_name,
+            .Limit = 10,
+        };
+
+        var json_string = std.ArrayList(u8).init(self.allocator);
+        defer json_string.deinit();
+
+        try std.json.stringify(scan_request, .{ .emit_null_optional_fields = false }, json_string.writer());
+
+        // const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
+        // defer self.allocator.free(json_str);
+        var response_buff = try self.allocator.alloc(u8, 4096);
+        defer self.allocator.free(response_buff);
+        const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, response_buff);
+
+        std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, response_buff[0..bytes_read] });
+        // var parsed = try std.json.parseFromSlice(, self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
+        // defer parsed.deinit();
+        //
+        // return try parsed.value.copy(self.allocator);
+    }
 
     pub fn createTable(self: *DynamoDbClient, table_name: []const u8, key_name: []const u8) !void {
         std.debug.print("allocator {any}\n", .{self.allocator});

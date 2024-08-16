@@ -4,6 +4,7 @@ const c = @cImport({
 });
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
+const gtk = @import("gtk.zig");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -44,12 +45,9 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
 
     const header_bar = c.gtk_header_bar_new();
     const title_label = c.gtk_label_new("Dynamite");
-    c.gtk_window_set_titlebar(GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
-    c.gtk_header_bar_set_title_widget(GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
+    c.gtk_window_set_titlebar(gtk.GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
+    c.gtk_header_bar_set_title_widget(gtk.GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
     c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
-    // const header_close_button = c.gtk_button_new_with_label("X");
-    // c.gtk_widget_add_css_class(header_close_button, "header-close-button");
-    // c.gtk_header_bar_pack_start(@ptrCast(header_bar), header_close_button);
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
@@ -78,21 +76,15 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
 
-    // c.gtk_box_append(@ptrCast(create_box), @ptrCast(createBackMainButton()));
-
     const table_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_end(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_top(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(table_box), 10);
 
-    // c.gtk_box_append(@ptrCast(table_box), @ptrCast(createBackMainButton()));
-
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_box)), "create");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(table_box)), "table");
-    // _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(create_box), "create");
-    // _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(table_box), "table");
 
     c.gtk_window_set_child(main_window.window, @alignCast(@ptrCast(main_window.stack)));
 
@@ -130,22 +122,6 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_show(@ptrCast(main_window.window));
 }
 
-pub fn GTK_TYPE_HEADER_BAR() c.GType {
-    return c.gtk_header_bar_get_type();
-}
-
-pub fn GTK_TYPE_WINDOW() c.GType {
-    return c.gtk_window_get_type();
-}
-
-fn GTK_WINDOW(ip: *c.GTypeInstance) *c.GtkWindow {
-    return @as(*c.GtkWindow, @ptrCast(c.g_type_check_instance_cast(ip, GTK_TYPE_WINDOW())));
-}
-
-fn GTK_HEADER_BAR(ip: *c.GTypeInstance) *c.GtkHeaderBar {
-    return @as(*c.GtkHeaderBar, @ptrCast(c.g_type_check_instance_cast(ip, GTK_TYPE_HEADER_BAR())));
-}
-
 fn switchToCreateView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
     _ = button;
     _ = user_data;
@@ -158,9 +134,34 @@ fn switchToMainView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) 
     c.gtk_stack_set_visible_child_name(main_window.stack, "main");
 }
 
-fn switchToTableView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
-    _ = button;
+fn switchToTableView(
+    list_box: *c.GtkListBox,
+    row: *c.GtkListBoxRow,
+    user_data: ?*anyopaque,
+) callconv(.C) void {
+    std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     _ = user_data;
+    // _ = list_box;
+    var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
+        std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
+        return;
+    };
+    defer dynamo_client.deinit();
+
+    const item = c.gtk_list_box_row_get_child(row);
+    if (item == null) {
+        std.debug.print("Error: No child widget found in the row\n", .{});
+        return;
+    }
+
+    const text_c = c.gtk_label_get_text(@as(*c.GtkLabel, @ptrCast(item)));
+
+    const table = std.mem.span(text_c);
+
+    dynamo_client.scanTable(table) catch |err| {
+        std.debug.print("Error scanning table: {}\n", .{err});
+    };
+
     c.gtk_stack_set_visible_child_name(main_window.stack, "table");
 }
 
@@ -269,6 +270,25 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
 
     c.gtk_entry_buffer_set_text(c.gtk_entry_get_buffer(main_window.entry), "", 0);
 }
+
+// fn handyFuncGetType() void {
+// const widget_type = c.G_OBJECT_TYPE(item);
+// const type_name = c.g_type_name(widget_type);
+// std.debug.print("Widget type: {s}\n", .{type_name});
+//
+// var text_c: ?[*:0]const u8 = null;
+//
+// if (c.g_type_is_a(widget_type, c.gtk_label_get_type()) != 0) {
+//     text_c = c.gtk_label_get_text(@ptrCast(item));
+// } else if (c.g_type_is_a(widget_type, c.gtk_button_get_type()) != 0) {
+//     text_c = c.gtk_button_get_label(@ptrCast(item));
+// } else if (c.g_type_is_a(widget_type, c.gtk_entry_get_type()) != 0) {
+//     text_c = c.gtk_editable_get_text(@ptrCast(item));
+// } else {
+//     std.debug.print("Unsupported widget type: {s}\n", .{type_name});
+//     return;
+// }
+// }
 
 fn debug_handler(
     log_domain: [*c]const u8,
