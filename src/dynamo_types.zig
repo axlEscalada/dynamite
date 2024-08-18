@@ -267,7 +267,7 @@ pub fn ScanResponse(comptime T: type) type {
                 result.Items = try allocator.alloc(T, items_value.array.items.len);
                 for (items_value.array.items, 0..) |item, i| {
                     if (item != .object) return error.UnexpectedToken;
-                    result.Items[i] = try parseItem(T, allocator, item.object, options);
+                    result.Items[i] = try parseItem(T, allocator, item, options);
                 }
             } else {
                 return error.MissingField;
@@ -308,7 +308,7 @@ pub fn ScanResponse(comptime T: type) type {
         fn parseItem(
             comptime ItemType: type,
             allocator: std.mem.Allocator,
-            object: std.json.ObjectMap,
+            json_value: std.json.Value,
             options: std.json.ParseOptions,
         ) !ItemType {
             var result: ItemType = undefined;
@@ -316,16 +316,16 @@ pub fn ScanResponse(comptime T: type) type {
             if (ItemType == []const u8) {
                 var string_buffer = std.ArrayList(u8).init(allocator);
                 defer string_buffer.deinit();
-                const json_object = std.json.Value{ .object = object };
                 const stringify_options = std.json.StringifyOptions{
                     .whitespace = .indent_2,
                     .emit_null_optional_fields = false,
                 };
-                try std.json.stringify(json_object, stringify_options, string_buffer.writer());
+                try std.json.stringify(json_value, stringify_options, string_buffer.writer());
 
                 std.debug.print("JSON string: {s}\n", .{string_buffer.items});
                 return try allocator.dupe(u8, string_buffer.items);
             } else {
+                var object = json_value.object;
                 inline for (std.meta.fields(ItemType)) |field| {
                     if (object.get(field.name)) |value| {
                         var attr = try DynamoDBAttributeValue.jsonParse(allocator, value, options);
@@ -411,20 +411,31 @@ test "deserialize scan response as string" {
     defer response.deinit();
 
     const expected = [_][]const u8{
-        \\    {
-        \\      "id": {"N": "1"},
-        \\      "name": {"S": "Item 1"},
-        \\      "is_active": {"BOOL": true}
-        \\    },
+        \\{
+        \\  "id": {
+        \\    "N": "1"
+        \\  },
+        \\  "name": {
+        \\    "S": "Item 1"
+        \\  },
+        \\  "is_active": {
+        \\    "BOOL": true
+        \\  }
+        \\}
         ,
-        \\    {
-        \\      "id": {"N": "2"},
-        \\      "name": {"S": "Item 2"},
-        \\      "is_active": {"BOOL": false}
-        \\    }
+        \\{
+        \\  "id": {
+        \\    "N": "2"
+        \\  },
+        \\  "name": {
+        \\    "S": "Item 2"
+        \\  },
+        \\  "is_active": {
+        \\    "BOOL": false
+        \\  }
+        \\}
     };
     for (response.value.Items, 0..) |item, i| {
-        std.debug.print("Item {s}", .{item});
         try std.testing.expectEqualStrings(expected[i], item);
     }
 }
