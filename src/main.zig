@@ -82,6 +82,34 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_margin_top(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(table_box), 10);
 
+    // const list_store = c.gtk_list_store_new(1, c.G_TYPE_STRING, c.G_TYPE_INT, c.G_TYPE_BOOLEAN);
+    const list_store = c.gtk_list_store_new(3, c.G_TYPE_STRING, c.G_TYPE_STRING, c.G_TYPE_BOOLEAN);
+    const tree_view = c.gtk_tree_view_new_with_model(@ptrCast(list_store));
+    // Add columns to the tree view
+    addTextColumn(tree_view, "Name", 0);
+    addTextColumn(tree_view, "Age", 1);
+    addToggleColumn(tree_view, "Is student", 2);
+
+    var iter: c.GtkTreeIter = undefined;
+    c.gtk_list_store_append(list_store, &iter);
+    c.gtk_list_store_set(list_store, &iter, //
+        @as(c_int, 0), "John", //first columnt
+    // @as(c_int, 1), @as(c_int, 25), //second column
+        @as(c_int, 1), "25", //second column
+        @as(c_int, 2), @as(c_int, 1), //third column
+        @as(c_int, -1));
+
+    c.gtk_list_store_append(list_store, &iter);
+    c.gtk_list_store_set(list_store, &iter, //
+        @as(c_int, 0), "Jane", //first columnt
+    // @as(c_int, 1), @as(c_int, 30), //second
+        @as(c_int, 1), "30", //second
+        @as(c_int, 2), @as(c_int, 0), //third
+        @as(c_int, -1)); //terminateor arg
+
+    // Add the tree view to the box
+    c.gtk_box_append(@ptrCast(table_box), tree_view);
+
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_box)), "create");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(table_box)), "table");
@@ -122,6 +150,24 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_show(@ptrCast(main_window.window));
 }
 
+fn addToggleColumn(tree_view: ?*c.GtkWidget, title: [*c]const u8, column_id: c_int) void {
+    const renderer = c.gtk_cell_renderer_toggle_new();
+    const column = c.gtk_tree_view_column_new();
+    c.gtk_tree_view_column_set_title(column, title);
+    c.gtk_tree_view_column_pack_start(column, renderer, @as(c_int, 1));
+    c.gtk_tree_view_column_add_attribute(column, renderer, "active", column_id);
+    _ = c.gtk_tree_view_append_column(@ptrCast(tree_view), column);
+}
+
+fn addTextColumn(tree_view: ?*c.GtkWidget, title: [*c]const u8, column_id: c_int) void {
+    const renderer = c.gtk_cell_renderer_text_new();
+    const column = c.gtk_tree_view_column_new();
+    c.gtk_tree_view_column_set_title(column, title);
+    c.gtk_tree_view_column_pack_start(column, renderer, @as(c_int, 1));
+    c.gtk_tree_view_column_add_attribute(column, renderer, "text", column_id);
+    _ = c.gtk_tree_view_append_column(@ptrCast(tree_view), column);
+}
+
 fn switchToCreateView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
     _ = button;
     _ = user_data;
@@ -141,7 +187,6 @@ fn switchToTableView(
 ) callconv(.C) void {
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     _ = user_data;
-    // _ = list_box;
     var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
@@ -158,9 +203,12 @@ fn switchToTableView(
 
     const table = std.mem.span(text_c);
 
-    dynamo_client.scanTable(table) catch |err| {
+    const response = dynamo_client.scanTable([]const u8, table) catch |err| {
         std.debug.print("Error scanning table: {}\n", .{err});
+        return;
     };
+
+    std.debug.print("Response: {any}\n", .{response});
 
     c.gtk_stack_set_visible_child_name(main_window.stack, "table");
 }

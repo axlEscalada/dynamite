@@ -313,19 +313,33 @@ pub fn ScanResponse(comptime T: type) type {
         ) !ItemType {
             var result: ItemType = undefined;
 
-            inline for (std.meta.fields(ItemType)) |field| {
-                if (object.get(field.name)) |value| {
-                    var attr = try DynamoDBAttributeValue.jsonParse(allocator, value, options);
-                    defer attr.deinit(allocator);
+            if (ItemType == []const u8) {
+                var string_buffer = std.ArrayList(u8).init(allocator);
+                defer string_buffer.deinit();
+                const json_object = std.json.Value{ .object = object };
+                const stringify_options = std.json.StringifyOptions{
+                    .whitespace = .indent_2,
+                    .emit_null_optional_fields = false,
+                };
+                try std.json.stringify(json_object, stringify_options, string_buffer.writer());
 
-                    @field(result, field.name) = switch (field.type) {
-                        []const u8 => try allocator.dupe(u8, attr.value.S),
-                        usize, u64, u32, u16, u8 => try std.fmt.parseInt(field.type, attr.value.N, 10),
-                        bool => attr.value.BOOL,
-                        else => @compileError("Unsupported field type: " ++ @typeName(field.type)),
-                    };
-                } else {
-                    return error.MissingField;
+                std.debug.print("JSON string: {s}\n", .{string_buffer.items});
+                return try allocator.dupe(u8, string_buffer.items);
+            } else {
+                inline for (std.meta.fields(ItemType)) |field| {
+                    if (object.get(field.name)) |value| {
+                        var attr = try DynamoDBAttributeValue.jsonParse(allocator, value, options);
+                        defer attr.deinit(allocator);
+
+                        @field(result, field.name) = switch (field.type) {
+                            []const u8 => try allocator.dupe(u8, attr.value.S),
+                            usize, u64, u32, u16, u8 => try std.fmt.parseInt(field.type, attr.value.N, 10),
+                            bool => attr.value.BOOL,
+                            else => @compileError("Unsupported field type: " ++ @typeName(field.type)),
+                        };
+                    } else {
+                        return error.MissingField;
+                    }
                 }
             }
 
@@ -367,6 +381,51 @@ test "deserialize scan response" {
 
     for (response.value.Items) |item| {
         std.debug.print("ID: {d}, Name: {s}, Active: {}\n", .{ item.id, item.name, item.is_active });
+    }
+}
+
+test "deserialize scan response as string" {
+    const json_string =
+        \\{
+        \\  "Items": [
+        \\    {
+        \\      "id": {"N": "1"},
+        \\      "name": {"S": "Item 1"},
+        \\      "is_active": {"BOOL": true}
+        \\    },
+        \\    {
+        \\      "id": {"N": "2"},
+        \\      "name": {"S": "Item 2"},
+        \\      "is_active": {"BOOL": false}
+        \\    }
+        \\  ],
+        \\  "Count": 2,
+        \\  "ScannedCount": 2,
+        \\  "LastEvaluatedKey": null
+        \\}
+    ;
+
+    const allocator = std.testing.allocator;
+
+    var response = try std.json.parseFromSlice(ScanResponse([]const u8), allocator, json_string, .{ .ignore_unknown_fields = true });
+    defer response.deinit();
+
+    const expected = [_][]const u8{
+        \\    {
+        \\      "id": {"N": "1"},
+        \\      "name": {"S": "Item 1"},
+        \\      "is_active": {"BOOL": true}
+        \\    },
+        ,
+        \\    {
+        \\      "id": {"N": "2"},
+        \\      "name": {"S": "Item 2"},
+        \\      "is_active": {"BOOL": false}
+        \\    }
+    };
+    for (response.value.Items, 0..) |item, i| {
+        std.debug.print("Item {s}", .{item});
+        try std.testing.expectEqualStrings(expected[i], item);
     }
 }
 
