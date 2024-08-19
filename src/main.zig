@@ -5,6 +5,7 @@ const c = @cImport({
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
 const gtk = @import("gtk.zig");
+const builtin = @import("builtin");
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -102,6 +103,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
 
     _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
+    // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566") catch |e| {
@@ -220,6 +222,10 @@ fn switchToTableView(
     };
 
     c.gtk_stack_set_visible_child_name(main_window.stack, "table");
+    //workaround for macOS
+    if (builtin.target.os.tag == .macos) {
+        gtk.proccessPendingEvents();
+    }
 }
 
 const TableData = struct {
