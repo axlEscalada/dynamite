@@ -34,6 +34,11 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
     loadCss();
 
+    //set gtk dark theme by default
+    if (c.gtk_settings_get_default()) |settings| {
+        _ = c.g_object_set(@ptrCast(settings), "gtk-application-prefer-dark-theme", @as(c.gboolean, 1), @as(?*anyopaque, null));
+    }
+
     main_window = MainWindow{
         .window = @ptrCast(c.gtk_application_window_new(app)),
         .stack = @ptrCast(c.gtk_stack_new()),
@@ -213,6 +218,7 @@ fn switchToTableView(
         std.debug.print("Error scanning table: {}\n", .{err});
         return;
     };
+    // defer response.deinit(global_allocator);
 
     std.debug.print("Response: {s}\n", .{response.Items});
     var column_names = [_][]const u8{"Item"};
@@ -292,7 +298,7 @@ fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
 
 fn createBackMainButton() *c.GtkWidget {
     const back_button = c.gtk_button_new_from_icon_name("go-previous-symbolic");
-    c.gtk_widget_add_css_class(@ptrCast(back_button), "circular");
+    c.gtk_widget_add_css_class(@ptrCast(back_button), "back-button");
     c.gtk_widget_set_halign(@ptrCast(back_button), c.GTK_ALIGN_START);
     c.gtk_widget_set_valign(@ptrCast(back_button), c.GTK_ALIGN_START);
     c.gtk_widget_set_margin_start(@ptrCast(back_button), 0);

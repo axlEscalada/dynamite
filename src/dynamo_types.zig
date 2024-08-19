@@ -249,6 +249,38 @@ pub fn ScanResponse(comptime T: type) type {
                 key.deinit();
             }
         }
+        pub fn copy(self: Self, allocator: std.mem.Allocator) !Self {
+            var new_items = try ArrayList(T).initCapacity(allocator, self.Items.len);
+            errdefer new_items.deinit();
+
+            for (self.Items) |itm| {
+                // const new_item = try allocator.create(T);
+                // errdefer allocator.free(new_item);
+                // new_item.* = itm;
+                try new_items.append(itm);
+            }
+
+            return Self{
+                .Items = new_items.items,
+                .Count = self.Count,
+                .ScannedCount = self.ScannedCount,
+                .LastEvaluatedKey = null,
+            };
+        }
+
+        // pub fn copy(self: @This(), allocator: std.mem.Allocator) !Self {
+        //     const new_items = try allocator.alloc(T, self.Items.len);
+        //     errdefer allocator.free(new_items);
+        //
+        //     @memcpy(new_items, self.Items);
+        //
+        //     return Self{
+        //         .Items = new_items,
+        //         .Count = self.Count,
+        //         .ScannedCount = self.ScannedCount,
+        //         .LastEvaluatedKey = null,
+        //     };
+        // }
 
         pub fn jsonParse(
             allocator: std.mem.Allocator,

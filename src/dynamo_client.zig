@@ -49,7 +49,8 @@ pub const DynamoDbClient = struct {
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, response_buff[0..bytes_read] });
         const parsed = try std.json.parseFromSlice(ScanResponse(T), self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
-        // defer parsed.deinit();
+
+        // return parsed.value.copy(self.allocator);
 
         // return try parsed.value.copy(self.allocator);
         return parsed.value;
