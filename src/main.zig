@@ -89,6 +89,9 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
 
+    const table_scrolled_window = c.gtk_scrolled_window_new();
+    c.gtk_scrolled_window_set_policy(@ptrCast(table_scrolled_window), c.GTK_POLICY_AUTOMATIC, c.GTK_POLICY_AUTOMATIC);
+
     const table_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_end(@ptrCast(table_box), 10);
@@ -100,7 +103,10 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
         std.debug.print("Failed to create detail tree view\n", .{});
         return;
     }
-    c.gtk_box_append(@ptrCast(table_box), tree_view);
+    // c.gtk_box_append(@ptrCast(table_box), tree_view);
+    c.gtk_scrolled_window_set_child(@ptrCast(table_scrolled_window), @alignCast(@ptrCast(tree_view)));
+    c.gtk_widget_set_vexpand(@ptrCast(table_scrolled_window), 1);
+    c.gtk_box_append(@ptrCast(table_box), table_scrolled_window);
 
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_box)), "create");
