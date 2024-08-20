@@ -121,7 +121,7 @@ pub const DynamoDbClient = struct {
         var writer = std.ArrayList(u8).init(self.allocator);
         defer writer.deinit();
 
-        const bytes_read = try self.sendRequest("POST", headers.items, json_str, writer.writer());
+        const bytes_read = try self.sendRequest("POST", headers.items, body, writer.writer());
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
         var parsed = try std.json.parseFromSlice(ListTablesResponse, self.allocator, writer.items, .{ .ignore_unknown_fields = true });
