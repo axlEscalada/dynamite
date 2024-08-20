@@ -25,8 +25,7 @@ pub const DynamoDbClient = struct {
         self.allocator.free(self.endpoint);
     }
 
-    pub fn scanTable(self: *DynamoDbClient, comptime T: type, table_name: []const u8) !ScanResponse(T) {
-        std.debug.print("allocator {any}\n", .{self.allocator});
+    pub fn scanTable(self: *DynamoDbClient, allocator: std.mem.Allocator, comptime T: type, table_name: []const u8) !ScanResponse(T) {
         var headers = std.ArrayList(std.http.Header).init(self.allocator);
         defer headers.deinit();
         try headers.append(.{ .name = "Content-Type", .value = "application/json" });
@@ -42,16 +41,14 @@ pub const DynamoDbClient = struct {
 
         try std.json.stringify(scan_request, .{ .emit_null_optional_fields = false }, json_string.writer());
 
-        var writer = std.ArrayList(u8).init(self.allocator);
+        var writer = std.ArrayList(u8).init(allocator);
         defer writer.deinit();
         const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
-        const parsed = try std.json.parseFromSlice(ScanResponse(T), self.allocator, writer.items, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(ScanResponse(T), allocator, writer.items, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
 
-        // return parsed.value.copy(self.allocator);
-
-        // return try parsed.value.copy(self.allocator);
         return parsed.value;
     }
 
@@ -156,26 +153,18 @@ pub const DynamoDbClient = struct {
         const status = request.response.status;
         var total_bytes: usize = 0;
 
+        while (true) {
+            const bytes_read = try request.reader().read(&buffer);
+            if (bytes_read == 0) break;
+            try writer.writeAll(buffer[0..bytes_read]);
+            total_bytes += bytes_read;
+        }
         if (status != .ok) {
             std.debug.print("Error: HTTP status {d}\n", .{@intFromEnum(status)});
-            while (true) {
-                const bytes_read = try request.reader().read(&buffer);
-                if (bytes_read == 0) break;
-                try writer.writeAll(buffer[0..bytes_read]);
-                total_bytes += bytes_read;
-            }
             return error.HttpRequestFailed;
-        } else if (status == .ok) {
-            std.debug.print("Request succeeded\n", .{});
-            while (true) {
-                const bytes_read = try request.reader().read(&buffer);
-                if (bytes_read == 0) break;
-                try writer.writeAll(buffer[0..bytes_read]);
-                total_bytes += bytes_read;
-            }
-            return total_bytes;
         }
-        return 0;
+        std.debug.print("Request succeeded\n", .{});
+        return total_bytes;
     }
 };
 

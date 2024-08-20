@@ -53,3 +53,22 @@ pub fn proccessPendingEvents() void {
     }
     std.debug.print("Total iterations: {d}\n", .{iteration_count});
 }
+
+fn handyFuncGetType(item: *c.GtkWidget) void {
+    const widget_type = c.G_OBJECT_TYPE(item);
+    const type_name = c.g_type_name(widget_type);
+    std.debug.print("Widget type: {s}\n", .{type_name});
+
+    var text_c: ?[*:0]const u8 = null;
+
+    if (c.g_type_is_a(widget_type, c.gtk_label_get_type()) != 0) {
+        text_c = c.gtk_label_get_text(@ptrCast(item));
+    } else if (c.g_type_is_a(widget_type, c.gtk_button_get_type()) != 0) {
+        text_c = c.gtk_button_get_label(@ptrCast(item));
+    } else if (c.g_type_is_a(widget_type, c.gtk_entry_get_type()) != 0) {
+        text_c = c.gtk_editable_get_text(@ptrCast(item));
+    } else {
+        std.debug.print("Unsupported widget type: {s}\n", .{type_name});
+        return;
+    }
+}

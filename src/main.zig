@@ -223,11 +223,12 @@ fn switchToTableView(
 
     const table = std.mem.span(text_c);
 
-    const response = dynamo_client.scanTable([]const u8, table) catch |err| {
+    var arena_allocator = std.heap.ArenaAllocator.init(global_allocator);
+    defer arena_allocator.deinit();
+    const response = dynamo_client.scanTable(arena_allocator.allocator(), []const u8, table) catch |err| {
         std.debug.print("Error scanning table: {}\n", .{err});
         return;
     };
-    // defer response.deinit(global_allocator);
 
     std.debug.print("Response: {s}\n", .{response.Items});
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -290,7 +291,6 @@ fn switchToTableView(
         std.debug.print("\n", .{});
     }
 
-    // var column_names = [_][]const u8{"Item"};
     populateDetailTreeView(tree_view, columnNames.items, rows.items) catch |e| {
         std.log.err("Error while populating column {any}\n", .{e});
         return;
@@ -462,25 +462,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
 
     c.gtk_entry_buffer_set_text(c.gtk_entry_get_buffer(main_window.entry), "", 0);
 }
-
-// fn handyFuncGetType() void {
-// const widget_type = c.G_OBJECT_TYPE(item);
-// const type_name = c.g_type_name(widget_type);
-// std.debug.print("Widget type: {s}\n", .{type_name});
-//
-// var text_c: ?[*:0]const u8 = null;
-//
-// if (c.g_type_is_a(widget_type, c.gtk_label_get_type()) != 0) {
-//     text_c = c.gtk_label_get_text(@ptrCast(item));
-// } else if (c.g_type_is_a(widget_type, c.gtk_button_get_type()) != 0) {
-//     text_c = c.gtk_button_get_label(@ptrCast(item));
-// } else if (c.g_type_is_a(widget_type, c.gtk_entry_get_type()) != 0) {
-//     text_c = c.gtk_editable_get_text(@ptrCast(item));
-// } else {
-//     std.debug.print("Unsupported widget type: {s}\n", .{type_name});
-//     return;
-// }
-// }
 
 fn debug_handler(
     log_domain: [*c]const u8,
