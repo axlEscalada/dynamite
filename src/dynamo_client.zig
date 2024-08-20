@@ -7,6 +7,7 @@ const CreateTableRequest = @import("dynamo_types.zig").CreateTableRequest;
 const ListTablesResponse = @import("dynamo_types.zig").ListTablesResponse;
 const ScanResponse = @import("dynamo_types.zig").ScanResponse;
 const DataValue = @import("dynamo_types.zig").DataValue;
+const null_writer = std.io.null_writer;
 
 pub const DynamoDbClient = struct {
     allocator: std.mem.Allocator,
@@ -41,14 +42,12 @@ pub const DynamoDbClient = struct {
 
         try std.json.stringify(scan_request, .{ .emit_null_optional_fields = false }, json_string.writer());
 
-        // const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
-        // defer self.allocator.free(json_str);
-        var response_buff = try self.allocator.alloc(u8, 4096);
-        defer self.allocator.free(response_buff);
-        const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, response_buff);
+        var writer = std.ArrayList(u8).init(self.allocator);
+        defer writer.deinit();
+        const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
 
-        std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, response_buff[0..bytes_read] });
-        const parsed = try std.json.parseFromSlice(ScanResponse(T), self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
+        std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
+        const parsed = try std.json.parseFromSlice(ScanResponse(T), self.allocator, writer.items, .{ .ignore_unknown_fields = true });
 
         // return parsed.value.copy(self.allocator);
 
@@ -69,7 +68,7 @@ pub const DynamoDbClient = struct {
         const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
         defer self.allocator.free(json_str);
 
-        _ = try self.sendRequest("POST", headers.items, json_str, null);
+        _ = try self.sendRequest("POST", headers.items, json_str, null_writer);
     }
 
     pub fn listTables(self: *DynamoDbClient) !ListTablesResponse {
@@ -86,12 +85,13 @@ pub const DynamoDbClient = struct {
         const json_str = try json.stringifyAlloc(self.allocator, payload, .{});
         defer self.allocator.free(json_str);
 
-        var response_buff = try self.allocator.alloc(u8, 4096);
-        defer self.allocator.free(response_buff);
-        const bytes_read = try self.sendRequest("POST", headers.items, json_str, response_buff);
+        var writer = std.ArrayList(u8).init(self.allocator);
+        defer writer.deinit();
 
-        std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, response_buff[0..bytes_read] });
-        var parsed = try std.json.parseFromSlice(ListTablesResponse, self.allocator, response_buff[0..bytes_read], .{ .ignore_unknown_fields = true });
+        const bytes_read = try self.sendRequest("POST", headers.items, json_str, writer.writer());
+
+        std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
+        var parsed = try std.json.parseFromSlice(ListTablesResponse, self.allocator, writer.items, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         return try parsed.value.copy(self.allocator);
@@ -132,7 +132,7 @@ pub const DynamoDbClient = struct {
         _ = try self.sendRequest("POST", headers.items, json_str.items, null);
     }
 
-    fn sendRequest(self: *DynamoDbClient, comptime method: []const u8, headers: []http.Header, body: []const u8, response_buff: ?[]u8) !usize {
+    fn sendRequest(self: *DynamoDbClient, comptime method: []const u8, headers: []http.Header, body: []const u8, writer: anytype) !usize {
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
         const uri = try std.Uri.parse(self.endpoint);
@@ -150,38 +150,30 @@ pub const DynamoDbClient = struct {
         try request.finish();
         try request.wait();
 
+        const BUFFER_SIZE = 4096;
+        var buffer: [BUFFER_SIZE]u8 = undefined;
+
         const status = request.response.status;
+        var total_bytes: usize = 0;
+
         if (status != .ok) {
             std.debug.print("Error: HTTP status {d}\n", .{@intFromEnum(status)});
-            if (request.response.content_length) |len| {
-                if (response_buff == null) {
-                    const response_body = try self.allocator.alloc(u8, len);
-                    defer self.allocator.free(response_body);
-                    _ = try request.reader().readAll(response_body);
-                    std.debug.print("Response body: {s}\n", .{response_body});
-                } else {
-                    var response_body = try self.allocator.alloc(u8, len);
-                    defer self.allocator.free(response_body);
-                    const bytes_read = try request.reader().readAll(response_body);
-                    std.debug.print("Response body: {s}\n", .{response_body[0..bytes_read]});
-                }
+            while (true) {
+                const bytes_read = try request.reader().read(&buffer);
+                if (bytes_read == 0) break;
+                try writer.writeAll(buffer[0..bytes_read]);
+                total_bytes += bytes_read;
             }
             return error.HttpRequestFailed;
         } else if (status == .ok) {
             std.debug.print("Request succeeded\n", .{});
-
-            if (request.response.content_length) |len| {
-                if (response_buff == null) {
-                    const response_body = try self.allocator.alloc(u8, len);
-                    defer self.allocator.free(response_body);
-                    _ = try request.reader().readAll(response_body);
-                    std.debug.print("Null buff Response body: {s}\n", .{response_body});
-                } else {
-                    const bytes_read = try request.reader().readAll(response_buff.?);
-                    std.debug.print("Response body: {s}\n", .{response_buff.?[0..bytes_read]});
-                }
-                return len;
+            while (true) {
+                const bytes_read = try request.reader().read(&buffer);
+                if (bytes_read == 0) break;
+                try writer.writeAll(buffer[0..bytes_read]);
+                total_bytes += bytes_read;
             }
+            return total_bytes;
         }
         return 0;
     }

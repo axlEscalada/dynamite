@@ -103,6 +103,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
         std.debug.print("Failed to create detail tree view\n", .{});
         return;
     }
+    c.gtk_widget_add_css_class(@ptrCast(tree_view), "table-list");
     // c.gtk_box_append(@ptrCast(table_box), tree_view);
     c.gtk_scrolled_window_set_child(@ptrCast(table_scrolled_window), @alignCast(@ptrCast(tree_view)));
     c.gtk_widget_set_vexpand(@ptrCast(table_scrolled_window), 1);
