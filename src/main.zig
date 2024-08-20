@@ -6,6 +6,8 @@ const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
 const gtk = @import("gtk.zig");
 const builtin = @import("builtin");
+const ArrayList = std.ArrayList;
+const StringHashMap = std.StringHashMap;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -93,7 +95,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_margin_top(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(table_box), 10);
 
-    const tree_view = createEmptyDetailTreeView();
+    const tree_view = c.gtk_tree_view_new();
     if (tree_view == null) {
         std.debug.print("Failed to create detail tree view\n", .{});
         return;
@@ -221,8 +223,68 @@ fn switchToTableView(
     // defer response.deinit(global_allocator);
 
     std.debug.print("Response: {s}\n", .{response.Items});
-    var column_names = [_][]const u8{"Item"};
-    populateDetailTreeView(tree_view, &column_names, response.Items) catch |e| {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var columnNames = ArrayList([]const u8).init(allocator);
+    var rows = ArrayList(StringHashMap([]const u8)).init(allocator);
+
+    for (response.Items) |json_str| {
+        var json_tree = std.json.parseFromSlice(std.json.Value, allocator, json_str, .{}) catch |err| {
+            std.log.err("Error parsing JSON: {any}\n", .{err});
+            return;
+        };
+        defer json_tree.deinit();
+
+        const root = json_tree.value;
+        if (root != .object) continue;
+
+        var r = StringHashMap([]const u8).init(allocator);
+
+        var it = root.object.iterator();
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            const value = entry.value_ptr.*;
+
+            if (value != .object or !value.object.contains("S")) continue;
+
+            const s_value = value.object.get("S").?.string;
+            r.put(key, s_value) catch |err| {
+                std.log.err("Error adding value: {any}\n", .{err});
+                return;
+            };
+
+            if (!contains(columnNames, key)) {
+                columnNames.append(key) catch |err| {
+                    std.log.err("Error adding column name: {any}\n", .{err});
+                    return;
+                };
+            }
+        }
+
+        rows.append(r) catch |err| {
+            std.log.err("Error adding row: {any}\n", .{err});
+            return;
+        };
+    }
+
+    std.debug.print("Column Names:\n", .{});
+    for (columnNames.items) |name| {
+        std.debug.print("{s} ", .{name});
+    }
+    std.debug.print("\n\n", .{});
+
+    std.debug.print("Rows:\n", .{});
+    for (rows.items) |r| {
+        var it = r.iterator();
+        while (it.next()) |entry| {
+            std.debug.print("{s}: {s}, ", .{ entry.key_ptr.*, entry.value_ptr.* });
+        }
+        std.debug.print("\n", .{});
+    }
+
+    // var column_names = [_][]const u8{"Item"};
+    populateDetailTreeView(tree_view, columnNames.items, rows.items) catch |e| {
         std.log.err("Error while populating column {any}\n", .{e});
         return;
     };
@@ -234,28 +296,40 @@ fn switchToTableView(
     }
 }
 
+fn contains(list: std.ArrayList([]const u8), item: []const u8) bool {
+    for (list.items) |element| {
+        if (std.mem.eql(u8, element, item)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 const TableData = struct {
     headers: [][]const u8,
     data: []const [][]const u8,
 };
 
-fn populateDetailTreeView(tree_widget: ?*c.GtkWidget, column_names: [][]const u8, data: [][]const u8) !void {
+fn populateDetailTreeView(tree_widget: ?*c.GtkWidget, column_names: [][]const u8, data: []StringHashMap([]const u8)) !void {
     const tree_view: *c.GtkTreeView = @alignCast(@ptrCast(tree_widget));
-    c.gtk_tree_view_set_grid_lines(tree_view, c.GTK_TREE_VIEW_GRID_LINES_HORIZONTAL);
-    const list_store = @as(?*c.GtkListStore, @alignCast(@ptrCast(c.gtk_tree_view_get_model(tree_view))));
-
-    //Clear columns
-    var is_populated: c_int = 1;
-    while (is_populated == 1) {
-        const column: ?*c.GtkTreeViewColumn = c.gtk_tree_view_get_column(tree_view, 0);
-        if (column) |co| {
-            is_populated = c.gtk_tree_view_remove_column(tree_view, co);
-        } else {
-            is_populated = 0;
-        }
+    c.gtk_tree_view_set_grid_lines(tree_view, c.GTK_TREE_VIEW_GRID_LINES_BOTH);
+    const current_list = @as(?*c.GtkListStore, @alignCast(@ptrCast(c.gtk_tree_view_get_model(tree_view))));
+    if (current_list) |list| {
+        std.debug.print("Clearing list\n", .{});
+        _ = c.gtk_list_store_clear(list);
     }
 
-    _ = c.gtk_list_store_clear(list_store);
+    while (c.gtk_tree_view_get_column(tree_view, 0)) |column| {
+        _ = c.gtk_tree_view_remove_column(tree_view, column);
+    }
+
+    const col_types = try global_allocator.alloc(c.GType, column_names.len);
+    defer global_allocator.free(col_types);
+    for (col_types) |*col_type| {
+        col_type.* = c.G_TYPE_STRING;
+    }
+    const n_columns = @as(c_int, @intCast(column_names.len));
+    const list_store = c.gtk_list_store_newv(n_columns, col_types.ptr);
 
     for (column_names, 0..) |name, i| {
         addTextColumn(tree_view, name, @as(c_int, @intCast(i)));
@@ -264,12 +338,16 @@ fn populateDetailTreeView(tree_widget: ?*c.GtkWidget, column_names: [][]const u8
     var iter: c.GtkTreeIter = undefined;
     for (data) |row| {
         _ = c.gtk_list_store_append(list_store, &iter);
-        const c_string = try global_allocator.dupeZ(u8, row);
-        defer global_allocator.free(c_string);
-        _ = c.gtk_list_store_set(list_store, &iter, //
-            @as(c_int, 0), c_string.ptr, //
-            @as(c_int, -1));
+        for (column_names, 0..) |column, i| {
+            const value = row.get(column) orelse "";
+            std.debug.print("Column {s} Value: {s}\n", .{ column, value });
+            const c_string = try global_allocator.dupeZ(u8, value);
+            defer global_allocator.free(c_string);
+
+            _ = c.gtk_list_store_set(list_store, &iter, @as(c_int, @intCast(i)), c_string.ptr, @as(c_int, -1));
+        }
     }
+    c.gtk_tree_view_set_model(tree_view, @ptrCast(list_store));
 }
 
 fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
