@@ -40,7 +40,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const access_key = std.posix.getenv("AWS_ACCESS_KEY_ID");
     const secret_access_key = std.posix.getenv("AWS_SECRET_ACCESS_KEY");
     const session_token = std.posix.getenv("AWS_SESSION_TOKEN");
-    std.debug.print("Region: {s}, Access Key: {s}, Secret Access Key: {s}, Session Token: {s}\n", .{ region, access_key, secret_access_key, session_token });
+    std.debug.print("Region: {any}, Access Key: {any}, Secret Access Key: {any}, Session Token: {any}\n", .{ region, access_key, secret_access_key, session_token });
 
     credentials = AwsCredentials{
         .region = region,
