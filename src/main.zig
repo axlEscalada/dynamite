@@ -40,13 +40,22 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const access_key = std.posix.getenv("AWS_ACCESS_KEY_ID");
     const secret_access_key = std.posix.getenv("AWS_SECRET_ACCESS_KEY");
     const session_token = std.posix.getenv("AWS_SESSION_TOKEN");
-    std.debug.print("Region: {any}, Access Key: {any}, Secret Access Key: {any}, Session Token: {any}\n", .{ region, access_key, secret_access_key, session_token });
+    if (access_key) |ak| {
+        std.debug.print("access_key {s}\n", .{ak});
+    }
+    if (session_token) |st| {
+        std.debug.print("session {s}\n", .{st});
+    }
+    if (secret_access_key) |sc| {
+        std.debug.print("secret {s}\n", .{sc});
+    }
+    // std.debug.print("Region: {?}, Access Key: {s}, Secret Access Key: {s}, Session Token: {s}\n", .{ region, access_key, secret_access_key, session_token });
 
     credentials = AwsCredentials{
         .region = region,
-        .access_key = access_key,
-        .secret_access_key = secret_access_key,
-        .session_token = session_token,
+        .access_key = access_key.?,
+        .secret_access_key = secret_access_key.?,
+        .session_token = session_token.?,
     };
 
     // AWS_SESSION_TOKEN
@@ -137,7 +146,8 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
 
-    var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
+    var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
+        // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
     };
@@ -224,7 +234,8 @@ fn switchToTableView(
 ) callconv(.C) void {
     const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
-    var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
+    // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
+    var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
     };

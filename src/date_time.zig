@@ -10,26 +10,27 @@ pub const DateTime = struct {
 
     pub fn now() DateTime {
         const timestamp = std.time.timestamp();
-        std.debug.print("test time {d}\n", .{timestamp});
-        const epoch_seconds = @as(u64, @intCast(@max(timestamp, 0)));
-        std.debug.print("epoch_seconds: {d}\n", .{epoch_seconds});
+        // std.debug.print("test time {d}\n", .{timestamp});
+        // const epoch_seconds = @as(u64, @intCast(@max(timestamp, 0)));
+        const epoch_seconds = @max(timestamp, 0);
+        // std.debug.print("epoch_seconds: {d}\n", .{epoch_seconds});
 
         var ts = std.time.epoch.EpochSeconds{ .secs = epoch_seconds };
         const epoch_day = ts.getEpochDay();
-        const year_day = epoch_day.calculateYearDay();
+        // const year_day = epoch_day.calculateYearDay();
         const day_seconds = @as(u32, @intCast(ts.secs % std.time.s_per_day));
 
-        const month_day = year_day.calculateMonthDay();
-        std.debug.print("epoch_day: {any}\n", .{epoch_day});
-        std.debug.print("day_seconds: {any}\n", .{day_seconds});
-        std.debug.print("day: {d} year: {d}\n", .{ year_day.day, year_day.year });
-        std.debug.print("Month: {d} day: {d}\n", .{ month_day.month.numeric(), month_day.day_index });
+        // const month_day = year_day.calculateMonthDay();
+        // std.debug.print("epoch_day: {any}\n", .{epoch_day});
+        // std.debug.print("day_seconds: {any}\n", .{day_seconds});
+        // std.debug.print("day: {d} year: {d}\n", .{ year_day.day, year_day.year });
+        // std.debug.print("Month: {d} day: {d}\n", .{ month_day.month.numeric(), month_day.day_index });
 
         const yd = epoch_day.calculateYearDay();
         const md = yd.calculateMonthDay();
         const year = yd.year;
         const month = md.month.numeric();
-        const day = md.day_index;
+        const day = md.day_index + 1;
 
         // Calculate hour, minute, and second
         const hour: u8 = @intCast(day_seconds / std.time.s_per_hour);
@@ -42,7 +43,7 @@ pub const DateTime = struct {
 test "test time" {
     const timestamp = std.time.timestamp();
     std.debug.print("test time {d}\n", .{timestamp});
-    const epoch_seconds = @as(u64, @intCast(@max(timestamp, 0)));
+    const epoch_seconds = @max(timestamp, 0);
     std.debug.print("epoch_seconds: {d}\n", .{epoch_seconds});
 
     var ts = std.time.epoch.EpochSeconds{ .secs = epoch_seconds };
