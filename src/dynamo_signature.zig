@@ -42,16 +42,20 @@ pub fn signRequest(
     std.debug.print("Payload hash: {s}\n", .{payload_hash_hex});
 
     // Step 1: Create the canonical request
-    const canonical_request = try createCanonicalRequest(allocator, method, uri, query_string, GLOBAL_ENDPOINT, datetime, payload_hash_hex);
+    const canonical_request = try createCanonicalRequest(allocator, method, uri, query_string, payload_hash_hex, GLOBAL_ENDPOINT, datetime, session_token);
     // defer allocator.free(canonical_request);
+    std.debug.print("Canonical req: \n {s}\n", .{canonical_request});
+    std.debug.print("END\n", .{});
 
     // Step 2: Create the string to sign
     const string_to_sign = try createStringToSign(allocator, datetime, canonical_request);
     // defer allocator.free(string_to_sign);
+    std.debug.print("String to sign: {s}\n", .{string_to_sign});
 
     // Step 3: Calculate the signature
     const signature = try calculateSignature(allocator, secret_key, date, string_to_sign);
     // defer allocator.free(signature);
+    std.debug.print("Signature: {s}\n", .{signature});
 
     // Step 4: Create the authorization header
     const auth_header = try createAuthorizationHeader(allocator, access_key, date, signature);
@@ -75,6 +79,7 @@ fn createCanonicalRequest(
     payload_hash_hex: []const u8,
     host: []const u8,
     datetime: []const u8,
+    session_token: []const u8,
 ) ![]u8 {
     var canonical = std.ArrayList(u8).init(allocator);
     defer canonical.deinit();
@@ -97,11 +102,14 @@ fn createCanonicalRequest(
     try canonical.appendSlice("x-amz-date:");
     try canonical.appendSlice(datetime);
     try canonical.appendSlice("\n");
+    try canonical.appendSlice("x-amz-security-token:");
+    try canonical.appendSlice(session_token);
+    try canonical.appendSlice("\n");
     try canonical.appendSlice("x-amz-target:DynamoDB_20120810.ListTables\n");
     try canonical.appendSlice("\n");
 
     // Signed headers (in alphabetical order, lowercase)
-    try canonical.appendSlice("content-type;host;x-amz-content-sha256;x-amz-date;x-amz-target\n");
+    try canonical.appendSlice("content-type;host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-target\n");
 
     try canonical.appendSlice(payload_hash_hex);
 
@@ -197,15 +205,23 @@ fn calculateSignature(
     const k_secret = try std.fmt.allocPrint(allocator, "AWS4{s}", .{secret_key});
     const k_date = try hmacSha256(allocator, k_secret, date);
     defer allocator.free(k_date);
+    std.debug.print("Key: {any}\n", .{k_date});
 
-    const k_service = try hmacSha256(allocator, k_date, SERVICE);
+    const k_region = try hmacSha256(allocator, k_date, DEFAULT_REGION);
+    defer allocator.free(k_region);
+    std.debug.print("Key: {any}\n", .{k_region});
+
+    const k_service = try hmacSha256(allocator, k_region, SERVICE);
     defer allocator.free(k_service);
+    std.debug.print("Key: {any}\n", .{k_service});
 
     const k_signing = try hmacSha256(allocator, k_service, AWS4_REQUEST);
     defer allocator.free(k_signing);
+    std.debug.print("Key: {any}\n", .{k_signing});
 
     const signature = try hmacSha256(allocator, k_signing, string_to_sign);
     defer allocator.free(signature);
+    std.debug.print("Key: {any}\n", .{signature});
 
     const signature_hex = try allocator.alloc(u8, 64);
     _ = try fmt.bufPrint(signature_hex, "{s}", .{fmt.fmtSliceHexLower(signature)});
@@ -232,23 +248,6 @@ fn createAuthorizationHeader(
 
     return fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signed_headers, signature });
 }
-
-// fn createAuthorizationHeader(
-//     allocator: std.mem.Allocator,
-//     access_key: []const u8,
-//     date: []const u8,
-//     signature: []const u8,
-// ) ![]u8 {
-//     const credential_scope = try fmt.allocPrint(allocator, "{s}/{s}/{s}/{s}", .{
-//         date,
-//         DEFAULT_REGION,
-//         SERVICE,
-//         AWS4_REQUEST,
-//     });
-//     defer allocator.free(credential_scope);
-//
-//     return fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders=host;x-amz-date;x-amz-security-token, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signature });
-// }
 
 fn hmacSha256(allocator: std.mem.Allocator, key: []const u8, data: []const u8) ![]u8 {
     var hmac = crypto.auth.hmac.sha2.HmacSha256.init(key);
