@@ -35,6 +35,20 @@ var main_window: MainWindow = undefined;
 
 var credentials: AwsCredentials = undefined;
 
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    // put whatever you want here
+    @setCold(true);
+    std.debug.print("PANIC: {s}\n", .{msg});
+    std.debug.print("Trace: {any}\n", .{error_return_trace});
+    if (error_return_trace) |trace| {
+        std.debug.dumpStackTrace(trace.*);
+    }
+    if (ret_addr) |addr| {
+        std.debug.print("Return address: 0x{x}\n", .{addr});
+    }
+    std.process.exit(1);
+}
+
 fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const region = std.posix.getenv("AWS_REGION");
     const access_key = std.posix.getenv("AWS_ACCESS_KEY_ID");
@@ -154,25 +168,29 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     defer dynamo_client.deinit();
 
     c.gtk_list_box_remove_all(@ptrCast(main_window.list_box));
-    var tables = dynamo_client.listTables() catch |e| {
+    dynamo_client.list() catch |e| {
         std.debug.print("Error listing tables {}", .{e});
         return;
     };
-    defer tables.deinit(global_allocator);
-    std.debug.print("Tables main {any}\n", .{tables});
+    // var tables = dynamo_client.listTables() catch |e| {
+    //     std.debug.print("Error listing tables {}", .{e});
+    //     return;
+    // };
+    // defer tables.deinit(global_allocator);
+    // std.debug.print("Tables main {any}\n", .{tables});
 
-    for (tables.TableNames.items) |table| {
-        const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
-            std.debug.print("Error duplicating table name: {}\n", .{e});
-            return;
-        };
-        defer global_allocator.free(c_table_name);
-        std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
-        const list_item = c.gtk_label_new(c_table_name);
-        c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
-
-        c.gtk_widget_show(list_item);
-    }
+    // for (tables.TableNames.items) |table| {
+    //     const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
+    //         std.debug.print("Error duplicating table name: {}\n", .{e});
+    //         return;
+    //     };
+    //     defer global_allocator.free(c_table_name);
+    //     std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
+    //     const list_item = c.gtk_label_new(c_table_name);
+    //     c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
+    //
+    //     c.gtk_widget_show(list_item);
+    // }
 
     c.gtk_widget_show(@ptrCast(main_window.window));
 }
@@ -447,7 +465,7 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
         const table_name = std.mem.span(text);
         std.debug.print("Entered text: {s}\n", .{table_name});
 
-        var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
+        var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
             std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
             c.gtk_label_set_text(main_window.label, "Error creating DynamoDbClient");
             return;

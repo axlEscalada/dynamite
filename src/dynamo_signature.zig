@@ -39,36 +39,52 @@ pub fn signRequest(
     const payload_hash_hex = try allocator.alloc(u8, 64);
     // defer allocator.free(payload_hash_hex);
     _ = try std.fmt.bufPrint(payload_hash_hex, "{s}", .{std.fmt.fmtSliceHexLower(&payload_hash)});
-    std.debug.print("Payload hash: {s}\n", .{payload_hash_hex});
+    // std.debug.print("Payload hash: {s}\n", .{payload_hash_hex});
 
     // Step 1: Create the canonical request
     const canonical_request = try createCanonicalRequest(allocator, method, uri, query_string, payload_hash_hex, GLOBAL_ENDPOINT, datetime, session_token);
     // defer allocator.free(canonical_request);
-    std.debug.print("Canonical req: \n {s}\n", .{canonical_request});
-    std.debug.print("END\n", .{});
+    // std.debug.print("Canonical req: \n {s}\n", .{canonical_request});
+    // std.debug.print("END\n", .{});
 
     // Step 2: Create the string to sign
     const string_to_sign = try createStringToSign(allocator, datetime, canonical_request);
     // defer allocator.free(string_to_sign);
-    std.debug.print("String to sign: {s}\n", .{string_to_sign});
+    // std.debug.print("String to sign: {s}\n", .{string_to_sign});
 
     // Step 3: Calculate the signature
     const signature = try calculateSignature(allocator, secret_key, date, string_to_sign);
     // defer allocator.free(signature);
-    std.debug.print("Signature: {s}\n", .{signature});
+    // std.debug.print("Signature: {s}\n", .{signature});
 
     // Step 4: Create the authorization header
     const auth_header = try createAuthorizationHeader(allocator, access_key, date, signature);
     // defer allocator.free(auth_header);
 
-    var headers = std.ArrayList(std.http.Header).init(allocator);
-    defer headers.deinit();
-    try headers.append(.{ .name = "Host", .value = GLOBAL_ENDPOINT });
-    try headers.append(.{ .name = "x-amz-date", .value = datetime });
-    try headers.append(.{ .name = "x-amz-security-token", .value = session_token });
-    try headers.append(.{ .name = "x-amz-content-sha256", .value = payload_hash_hex });
-    try headers.append(.{ .name = "authorization", .value = auth_header });
-    return headers.toOwnedSlice();
+    // var headers = std.ArrayList(std.http.Header).init(allocator);
+    // defer headers.deinit();
+    // try headers.append(.{ .name = "Host", .value = GLOBAL_ENDPOINT });
+    // try headers.append(.{ .name = "x-amz-date", .value = datetime });
+    // try headers.append(.{ .name = "x-amz-security-token", .value = session_token });
+    // try headers.append(.{ .name = "x-amz-content-sha256", .value = payload_hash_hex });
+    // try headers.append(.{ .name = "authorization", .value = auth_header });
+    // return headers.toOwnedSlice();
+    // var headers = std.ArrayList(std.http.Header).init(allocator);
+    // errdefer headers.deinit();
+
+    var headers = try allocator.alloc(std.http.Header, 5);
+    headers[0] = .{ .name = try allocator.dupe(u8, "Host"), .value = try allocator.dupe(u8, GLOBAL_ENDPOINT) };
+    headers[1] = .{ .name = try allocator.dupe(u8, "x-amz-date"), .value = try allocator.dupe(u8, datetime) };
+    headers[2] = .{ .name = try allocator.dupe(u8, "x-amz-security-token"), .value = try allocator.dupe(u8, if (session_token.len > 0) session_token else " ") };
+    headers[3] = .{ .name = try allocator.dupe(u8, "x-amz-content-sha256"), .value = try allocator.dupe(u8, payload_hash_hex) };
+    headers[4] = .{ .name = try allocator.dupe(u8, "authorization"), .value = try allocator.dupe(u8, auth_header) };
+
+    for (headers) |entry| {
+        std.debug.print("Adding header: {s}: {s}\n", .{ entry.name, entry.value });
+        std.debug.print("Header name ptr: 0x{x}, value ptr: 0x{x}\n", .{ @intFromPtr(entry.name.ptr), @intFromPtr(entry.value.ptr) });
+    }
+
+    return headers;
 }
 
 fn createCanonicalRequest(
@@ -82,7 +98,7 @@ fn createCanonicalRequest(
     session_token: []const u8,
 ) ![]u8 {
     var canonical = std.ArrayList(u8).init(allocator);
-    defer canonical.deinit();
+    // defer canonical.deinit();
 
     try canonical.appendSlice(method);
     try canonical.appendSlice("\n");
@@ -116,60 +132,13 @@ fn createCanonicalRequest(
     return canonical.toOwnedSlice();
 }
 
-// fn createCanonicalRequest(
-//     allocator: std.mem.Allocator,
-//     method: []const u8,
-//     uri: []const u8,
-//     query_string: []const u8,
-//     host: []const u8,
-//     datetime: []const u8,
-//     payload_hash_hex: []const u8,
-// ) ![]u8 {
-//     var canonical = std.ArrayList(u8).init(allocator);
-//     defer canonical.deinit();
-//
-//     try canonical.appendSlice(method);
-//     try canonical.appendSlice("\n");
-//     try canonical.appendSlice(uri);
-//     try canonical.appendSlice("\n");
-//     try canonical.appendSlice(query_string);
-//     try canonical.appendSlice("\n");
-//
-//     // Canonical headers
-//     try canonical.appendSlice("host:");
-//     try canonical.appendSlice(host);
-//     try canonical.appendSlice("\n");
-//     try canonical.appendSlice("x-amz-date:");
-//     try canonical.appendSlice(datetime);
-//     try canonical.appendSlice("\n\n");
-//     try canonical.appendSlice("content-type:application/x-amz-json-1.0\n");
-//     try canonical.appendSlice("x-amz-content-sha256:");
-//     try canonical.appendSlice(payload_hash_hex);
-//     try canonical.appendSlice("\n\n");
-//     try canonical.appendSlice("x-amz-target:DynamoDB_20120810.ListTables\n");
-//     try canonical.appendSlice("\n");
-//
-//     // Signed headers
-//     try canonical.appendSlice("content-type;host;x-amz-content-sha256;x-amz-date;x-amz-target\n");
-//
-//     // // Payload hash
-//     // var payload_hash: [32]u8 = undefined;
-//     // crypto.hash.sha2.Sha256.hash(payload, &payload_hash, .{});
-//     // const payload_hash_hex = try allocator.alloc(u8, 64);
-//     // defer allocator.free(payload_hash_hex);
-//     // _ = try fmt.bufPrint(payload_hash_hex, "{s}", .{fmt.fmtSliceHexLower(&payload_hash)});
-//     try canonical.appendSlice(payload_hash_hex);
-//
-//     return canonical.toOwnedSlice();
-// }
-
 fn createStringToSign(
     allocator: std.mem.Allocator,
     datetime: []const u8,
     canonical_request: []const u8,
 ) ![]u8 {
     var string_to_sign = std.ArrayList(u8).init(allocator);
-    defer string_to_sign.deinit();
+    // defer string_to_sign.deinit();
 
     try string_to_sign.appendSlice(AWS4_HMAC_SHA256);
     try string_to_sign.appendSlice("\n");
@@ -182,14 +151,14 @@ fn createStringToSign(
         SERVICE,
         AWS4_REQUEST,
     });
-    defer allocator.free(scope);
+    // defer allocator.free(scope);
     try string_to_sign.appendSlice(scope);
     try string_to_sign.appendSlice("\n");
 
     var hash: [32]u8 = undefined;
     crypto.hash.sha2.Sha256.hash(canonical_request, &hash, .{});
     const hash_hex = try allocator.alloc(u8, 64);
-    defer allocator.free(hash_hex);
+    // defer allocator.free(hash_hex);
     _ = try fmt.bufPrint(hash_hex, "{s}", .{fmt.fmtSliceHexLower(&hash)});
     try string_to_sign.appendSlice(hash_hex);
 
@@ -204,24 +173,24 @@ fn calculateSignature(
 ) ![]u8 {
     const k_secret = try std.fmt.allocPrint(allocator, "AWS4{s}", .{secret_key});
     const k_date = try hmacSha256(allocator, k_secret, date);
-    defer allocator.free(k_date);
-    std.debug.print("Key: {any}\n", .{k_date});
+    // defer allocator.free(k_date);
+    // std.debug.print("Key: {any}\n", .{k_date});
 
     const k_region = try hmacSha256(allocator, k_date, DEFAULT_REGION);
-    defer allocator.free(k_region);
-    std.debug.print("Key: {any}\n", .{k_region});
+    // defer allocator.free(k_region);
+    // std.debug.print("Key: {any}\n", .{k_region});
 
     const k_service = try hmacSha256(allocator, k_region, SERVICE);
-    defer allocator.free(k_service);
-    std.debug.print("Key: {any}\n", .{k_service});
+    // defer allocator.free(k_service);
+    // std.debug.print("Key: {any}\n", .{k_service});
 
     const k_signing = try hmacSha256(allocator, k_service, AWS4_REQUEST);
-    defer allocator.free(k_signing);
-    std.debug.print("Key: {any}\n", .{k_signing});
+    // defer allocator.free(k_signing);
+    // std.debug.print("Key: {any}\n", .{k_signing});
 
     const signature = try hmacSha256(allocator, k_signing, string_to_sign);
-    defer allocator.free(signature);
-    std.debug.print("Key: {any}\n", .{signature});
+    // defer allocator.free(signature);
+    // std.debug.print("Key: {any}\n", .{signature});
 
     const signature_hex = try allocator.alloc(u8, 64);
     _ = try fmt.bufPrint(signature_hex, "{s}", .{fmt.fmtSliceHexLower(signature)});
@@ -241,13 +210,37 @@ fn createAuthorizationHeader(
         SERVICE,
         AWS4_REQUEST,
     });
-    defer allocator.free(credential_scope);
+    // defer allocator.free(credential_scope);
 
-    // Update the SignedHeaders to include all headers that are part of the signature
     const signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-target";
 
-    return fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signed_headers, signature });
+    const result = try fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signed_headers, signature });
+
+    std.debug.print("Auth header: {s}\n", .{result});
+    std.debug.print("Auth header ptr: 0x{x}, len: {}\n", .{ @intFromPtr(result.ptr), result.len });
+
+    return result;
 }
+
+// fn createAuthorizationHeader(
+//     allocator: std.mem.Allocator,
+//     access_key: []const u8,
+//     date: []const u8,
+//     signature: []const u8,
+// ) ![]u8 {
+//     const credential_scope = try fmt.allocPrint(allocator, "{s}/{s}/{s}/{s}", .{
+//         date,
+//         DEFAULT_REGION,
+//         SERVICE,
+//         AWS4_REQUEST,
+//     });
+//     defer allocator.free(credential_scope);
+//
+//     // Update the SignedHeaders to include all headers that are part of the signature
+//     const signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-target";
+//
+//     return fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signed_headers, signature });
+// }
 
 fn hmacSha256(allocator: std.mem.Allocator, key: []const u8, data: []const u8) ![]u8 {
     var hmac = crypto.auth.hmac.sha2.HmacSha256.init(key);
@@ -295,23 +288,24 @@ test "Test DynamoDB request signing without region" {
     //     \\    }
     //     \\}
     // ;
-    const access_key = "ASIAQJLWAM3KXGQO2RHP";
-    const secret_key = "EYAVmzntWQ7+LFRYeJ7rhaQ5rtWlUK/T0yG9lILn";
-    const session_token = "IQoJb3JpZ2luX2VjEHUaCXVzLWVhc3QtMSJGMEQCICWAXYVlIhpgbxtBFKO1m8Jx0qsddo1QjK5ftqK91Dm2AiBT+ZJw7TYE4oqWRtkPejidigfY/GldwYo6dcrzjm/BVSqYAwh+EAMaDDAyMDExMTcxNDAwNSIMw9EP+BTg5v+k91iZKvUC6pI7o76qzEmr+rzFqzNgKpTkQ293Y3RdsDhjxIqansSe+yNbBbLS8n0Slhr4J3NfJFS5BBKM5mywkYsDXvUaHwqqnvGWhyTyH3XxwrUoN2LzaOn0oJ/rc2LVA2XHeWiUZFpwjms55uu8O/DuTt1VpkgirypRaMJqs4IPbxE3P0EJrFY05vXg0fkRrPilgamPl24A1iWWNlM+Izmc3Hzgbnralg7Tl9Pe5JbQouSGDnW8fJJ4pZFDsBMMSWLsXI2EoiWCSbDHQES7HcPk+GW2kFAToZuJfJg81pZMJsVaQlvAZf5PSk+grV/S/zAyYsqmKzFleJ6I0Fa2z64M1d/fBI8L093NIeOXh5uk9Bg1V7QFVrPDV1jDgHJoPE3HSKMa8DfzmfskFGnYRAwCaTq/tZ6DQ7HtDn4qtbEy/OpkXZH0YDh9l/+wsoWwyrzxx4YVgM4DH3zVX7+SpLIfbViNPkdf/vVWAUnbfnx7igTTKmL/ftgXRjCspJm2BjqnAYbnwsmNBSM5U0UUhpRe4TTmk6LN+Wd1WvuLrQl6eKIH1zOqfNnH0+92g98HwtYK1FKKU+SZNEamosmtAiXk+QMs/Fsx37hwu68d9ephhhyuTLlz8eBmletsSyWH9uBWtXmnwoj37ceorW9O3Ynsuh/sq5jCG5gjFHHy3mMGs6hBvHbpZ9g0/ba05p1rhtcmxp7dWLPsZXWq8ScsG36UIHGY7+jD4cdw";
+    const AWS_ACCESS_KEY_ID = "ASIAQJLWAM3K3LKOEF5T";
+    const AWS_SECRET_ACCESS_KEY = "FBHS7Ko6no4qJvl37VfrpHIxgiGSj4rBQ2agAaMO";
+    const AWS_SESSION_TOKEN = "IQoJb3JpZ2luX2VjEJD//////////wEaCXVzLWVhc3QtMSJIMEYCIQDepgQQtwVvpKlKpAWXPz2Nob9lXZy81yovsXAGb3gkugIhAMmRZYShGoWNRgtg5UtpOihdpBHM0Ewq/P1XJjV3PkCkKqEDCJn//////////wEQAxoMMDIwMTExNzE0MDA1IgxqdpnCVTA0QeH5GPUq9QLKMxt+kwgpaP8aA3VkqgNZPch2qZZP80pf2eruQ2RlIttX1s8NqmU3aE03wYwZPNGPERQesVMJwrVPmbaWB6rNWgl2/z7J0x7ofhzEKfW5f2gdNt1xN88P3bO64U0GQatai4PLpfpMM0dowZq65rtj109ExOiLD3riygYmb8KcQvyLH6GCDmocRYLF3pgq7rlWicYnGSMuSHdfkD9fPe6RTeMFepztKhw0AWIcH0NqjTQO4oYBf7DdehB5pC3yee58cd1cvnfkw2qkiFdEXa67mDAz7yicP5//BbZ5Mq7xXnkbva5v8JwqwrwjKJdoLOSUmswkmns3qvO/dQC8ETHUbdfCpC+aYJOu1Bxki35W9W8iSqaSAoJggqarwtBBoN8yTWhmSspy6yVqCGDipO5G3YxyOnJ1wwRbgU3L5l+9aHrLy04Yx+OJNMo6wMq7sWGRnfo6R3CF56ZIPe0hY/aKTTIC+FyuPdHMAjc9f2j6qxAVw/S0MLeen7YGOqUBLjlRGE8i+8jmClkPsd4Cv7ol8tNFKsu0Tf3H3U8BHhwIPlN/Go/J2PfqpO0R8c5vUDQYG49zmsDX6RubncfgOaAizef444xFqwptvvQbh+MuwSZa4CiMuE7OngdjHVTo+6IOT1oUiofsygk5MpaQPTXtt8D27C1Lo1HyjNQxzDjoeMUT811nwjr/5rNzMMBdyccy8AZCn2zt1N1kWFRl23gwkudT";
     // const access_key = "AKIAIOSFODNN7EXAMPLE";
     // const secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
     // const session_token = "AQoDYXdzEJr...";
 
+    // const fixedDate = new Date("2024-08-22T13:30:05Z");
     const date = DateTime{
         .year = 2024,
         .month = 8,
-        .day = 21,
-        .hour = 20,
-        .minute = 49,
-        .second = 41,
+        .day = 22,
+        .hour = 13,
+        .minute = 30,
+        .second = 5,
     };
     // Call the signRequest function
-    const headers = try signRequest(allocator, method, uri, query_string, payload, access_key, secret_key, session_token, date);
+    const headers = try signRequest(allocator, method, uri, query_string, payload, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, date);
     defer allocator.free(headers);
 
     // Print the resulting headers
