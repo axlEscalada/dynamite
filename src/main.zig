@@ -168,29 +168,25 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     defer dynamo_client.deinit();
 
     c.gtk_list_box_remove_all(@ptrCast(main_window.list_box));
-    dynamo_client.list() catch |e| {
+    var tables = dynamo_client.listTables() catch |e| {
         std.debug.print("Error listing tables {}", .{e});
         return;
     };
-    // var tables = dynamo_client.listTables() catch |e| {
-    //     std.debug.print("Error listing tables {}", .{e});
-    //     return;
-    // };
-    // defer tables.deinit(global_allocator);
-    // std.debug.print("Tables main {any}\n", .{tables});
+    defer tables.deinit(global_allocator);
+    std.debug.print("Tables main {any}\n", .{tables});
 
-    // for (tables.TableNames.items) |table| {
-    //     const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
-    //         std.debug.print("Error duplicating table name: {}\n", .{e});
-    //         return;
-    //     };
-    //     defer global_allocator.free(c_table_name);
-    //     std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
-    //     const list_item = c.gtk_label_new(c_table_name);
-    //     c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
-    //
-    //     c.gtk_widget_show(list_item);
-    // }
+    for (tables.TableNames.items) |table| {
+        const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
+            std.debug.print("Error duplicating table name: {}\n", .{e});
+            return;
+        };
+        defer global_allocator.free(c_table_name);
+        std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
+        const list_item = c.gtk_label_new(c_table_name);
+        c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
+
+        c.gtk_widget_show(list_item);
+    }
 
     c.gtk_widget_show(@ptrCast(main_window.window));
 }

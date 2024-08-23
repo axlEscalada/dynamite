@@ -22,7 +22,6 @@ pub fn signRequest(
     secret_key: []const u8,
     session_token: []const u8,
     date_time: ?DateTime,
-    // ) ![]const u8 {
 ) ![]std.http.Header {
     const now = blk: {
         if (date_time) |d| {
@@ -60,17 +59,6 @@ pub fn signRequest(
     // Step 4: Create the authorization header
     const auth_header = try createAuthorizationHeader(allocator, access_key, date, signature);
     // defer allocator.free(auth_header);
-
-    // var headers = std.ArrayList(std.http.Header).init(allocator);
-    // defer headers.deinit();
-    // try headers.append(.{ .name = "Host", .value = GLOBAL_ENDPOINT });
-    // try headers.append(.{ .name = "x-amz-date", .value = datetime });
-    // try headers.append(.{ .name = "x-amz-security-token", .value = session_token });
-    // try headers.append(.{ .name = "x-amz-content-sha256", .value = payload_hash_hex });
-    // try headers.append(.{ .name = "authorization", .value = auth_header });
-    // return headers.toOwnedSlice();
-    // var headers = std.ArrayList(std.http.Header).init(allocator);
-    // errdefer headers.deinit();
 
     var headers = try allocator.alloc(std.http.Header, 5);
     headers[0] = .{ .name = try allocator.dupe(u8, "Host"), .value = try allocator.dupe(u8, GLOBAL_ENDPOINT) };
@@ -173,23 +161,23 @@ fn calculateSignature(
 ) ![]u8 {
     const k_secret = try std.fmt.allocPrint(allocator, "AWS4{s}", .{secret_key});
     const k_date = try hmacSha256(allocator, k_secret, date);
-    // defer allocator.free(k_date);
+    defer allocator.free(k_date);
     // std.debug.print("Key: {any}\n", .{k_date});
 
     const k_region = try hmacSha256(allocator, k_date, DEFAULT_REGION);
-    // defer allocator.free(k_region);
+    defer allocator.free(k_region);
     // std.debug.print("Key: {any}\n", .{k_region});
 
     const k_service = try hmacSha256(allocator, k_region, SERVICE);
-    // defer allocator.free(k_service);
+    defer allocator.free(k_service);
     // std.debug.print("Key: {any}\n", .{k_service});
 
     const k_signing = try hmacSha256(allocator, k_service, AWS4_REQUEST);
-    // defer allocator.free(k_signing);
+    defer allocator.free(k_signing);
     // std.debug.print("Key: {any}\n", .{k_signing});
 
     const signature = try hmacSha256(allocator, k_signing, string_to_sign);
-    // defer allocator.free(signature);
+    defer allocator.free(signature);
     // std.debug.print("Key: {any}\n", .{signature});
 
     const signature_hex = try allocator.alloc(u8, 64);
@@ -270,32 +258,17 @@ fn formatDatetime(allocator: std.mem.Allocator, date: DateTime) ![]u8 {
 }
 
 test "Test DynamoDB request signing without region" {
-    // Set up a test allocator
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    // Test parameters
     const method = "POST";
     const uri = "/";
     const query_string = "";
     const payload = "{}";
-    //     \\{
-    //     \\    "TableName": "TestTable",
-    //     \\    "Item": {
-    //     \\        "Id": {"S": "1234"},
-    //     \\        "Name": {"S": "Test Item"}
-    //     \\    }
-    //     \\}
-    // ;
-    const AWS_ACCESS_KEY_ID = "ASIAQJLWAM3K3LKOEF5T";
-    const AWS_SECRET_ACCESS_KEY = "FBHS7Ko6no4qJvl37VfrpHIxgiGSj4rBQ2agAaMO";
-    const AWS_SESSION_TOKEN = "IQoJb3JpZ2luX2VjEJD//////////wEaCXVzLWVhc3QtMSJIMEYCIQDepgQQtwVvpKlKpAWXPz2Nob9lXZy81yovsXAGb3gkugIhAMmRZYShGoWNRgtg5UtpOihdpBHM0Ewq/P1XJjV3PkCkKqEDCJn//////////wEQAxoMMDIwMTExNzE0MDA1IgxqdpnCVTA0QeH5GPUq9QLKMxt+kwgpaP8aA3VkqgNZPch2qZZP80pf2eruQ2RlIttX1s8NqmU3aE03wYwZPNGPERQesVMJwrVPmbaWB6rNWgl2/z7J0x7ofhzEKfW5f2gdNt1xN88P3bO64U0GQatai4PLpfpMM0dowZq65rtj109ExOiLD3riygYmb8KcQvyLH6GCDmocRYLF3pgq7rlWicYnGSMuSHdfkD9fPe6RTeMFepztKhw0AWIcH0NqjTQO4oYBf7DdehB5pC3yee58cd1cvnfkw2qkiFdEXa67mDAz7yicP5//BbZ5Mq7xXnkbva5v8JwqwrwjKJdoLOSUmswkmns3qvO/dQC8ETHUbdfCpC+aYJOu1Bxki35W9W8iSqaSAoJggqarwtBBoN8yTWhmSspy6yVqCGDipO5G3YxyOnJ1wwRbgU3L5l+9aHrLy04Yx+OJNMo6wMq7sWGRnfo6R3CF56ZIPe0hY/aKTTIC+FyuPdHMAjc9f2j6qxAVw/S0MLeen7YGOqUBLjlRGE8i+8jmClkPsd4Cv7ol8tNFKsu0Tf3H3U8BHhwIPlN/Go/J2PfqpO0R8c5vUDQYG49zmsDX6RubncfgOaAizef444xFqwptvvQbh+MuwSZa4CiMuE7OngdjHVTo+6IOT1oUiofsygk5MpaQPTXtt8D27C1Lo1HyjNQxzDjoeMUT811nwjr/5rNzMMBdyccy8AZCn2zt1N1kWFRl23gwkudT";
-    // const access_key = "AKIAIOSFODNN7EXAMPLE";
-    // const secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-    // const session_token = "AQoDYXdzEJr...";
-
-    // const fixedDate = new Date("2024-08-22T13:30:05Z");
+    const AWS_ACCESS_KEY_ID = "";
+    const AWS_SECRET_ACCESS_KEY = "";
+    const AWS_SESSION_TOKEN = "";
     const date = DateTime{
         .year = 2024,
         .month = 8,
@@ -304,12 +277,9 @@ test "Test DynamoDB request signing without region" {
         .minute = 30,
         .second = 5,
     };
-    // Call the signRequest function
     const headers = try signRequest(allocator, method, uri, query_string, payload, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, date);
     defer allocator.free(headers);
 
-    // Print the resulting headers
-    // std.debug.print("Generated Headers:\n{s}\n", .{headers});
     for (headers) |header| {
         std.debug.print("{s}: {s}\n", .{ header.name, header.value });
     }
