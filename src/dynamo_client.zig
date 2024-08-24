@@ -62,9 +62,11 @@ pub const DynamoDbClient = struct {
 
         var writer = std.ArrayList(u8).init(allocator);
         defer writer.deinit();
-        const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
-        const sign_headers = try dynamo_signature.signRequest(allocator, "POST", "/", "", writer.items, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null);
+
+        const sign_headers = try dynamo_signature.signRequest(allocator, "POST", "/", "", json_string.items, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
         try headers.appendSlice(sign_headers);
+
+        const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
         const parsed = try std.json.parseFromSlice(ScanResponse(T), allocator, writer.items, .{ .ignore_unknown_fields = true });
@@ -86,7 +88,7 @@ pub const DynamoDbClient = struct {
         const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
         defer self.allocator.free(json_str);
 
-        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", json_str, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null);
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", json_str, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
         try headers.appendSlice(sign_headers);
 
         _ = try self.sendRequest("POST", headers.items, json_str, null_writer);
@@ -104,7 +106,7 @@ pub const DynamoDbClient = struct {
         };
         const body = try json.stringifyAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
-        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null);
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
         try headers.appendSlice(sign_headers);
 
         var writer = std.ArrayList(u8).init(self.allocator);
@@ -190,12 +192,10 @@ pub const DynamoDbClient = struct {
         try request.finish();
         try request.wait();
 
-        // Print response status
         const status = request.response.status;
 
         std.debug.print("Response status: {}\n", .{status});
 
-        // Print response headers
         var total_bytes: usize = 0;
         var buffer = try self.allocator.alloc(u8, 4096000);
         defer self.allocator.free(buffer);

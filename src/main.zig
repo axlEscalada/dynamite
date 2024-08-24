@@ -108,9 +108,15 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_margin_top(@ptrCast(main_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(main_box), 10);
 
+    //This view hold the tables listed on dynamo
     const scrolled_window = c.gtk_scrolled_window_new();
     c.gtk_scrolled_window_set_child(@ptrCast(scrolled_window), @alignCast(@ptrCast(main_window.list_box)));
     c.gtk_widget_set_vexpand(@ptrCast(scrolled_window), 1);
+
+    const search_entry = c.gtk_entry_new();
+    c.gtk_box_append(@ptrCast(main_box), @ptrCast(search_entry));
+
+    c.gtk_list_box_set_filter_func(main_window.list_box, filterTableItems, search_entry, null);
 
     c.gtk_box_append(@ptrCast(main_box), @ptrCast(scrolled_window));
     c.gtk_widget_set_margin_top(@ptrCast(main_window.create_button), 10);
@@ -159,6 +165,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
+    // _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
         // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
@@ -182,13 +189,59 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
         };
         defer global_allocator.free(c_table_name);
         std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
+
         const list_item = c.gtk_label_new(c_table_name);
+        c.gtk_label_set_xalign(@ptrCast(list_item), 0.0);
+        c.gtk_widget_set_halign(@ptrCast(list_item), c.GTK_ALIGN_START);
         c.gtk_list_box_insert(@ptrCast(main_window.list_box), list_item, -1);
 
         c.gtk_widget_show(list_item);
     }
 
     c.gtk_widget_show(@ptrCast(main_window.window));
+}
+
+fn filterTableItems(row: ?*c.GtkListBoxRow, user_data: ?*anyopaque) callconv(.C) c_int {
+    const search_entry = @as(*c.GtkSearchEntry, @alignCast(@ptrCast(user_data)));
+    const search_text = c.gtk_editable_get_text(@ptrCast(search_entry));
+
+    const label = c.gtk_list_box_row_get_child(row);
+    const item_text = c.gtk_label_get_text(@ptrCast(label));
+
+    if (caseInsensitiveContains(item_text, search_text)) {
+        return 1; // Show the item
+    } else {
+        return 0; // Hide the item
+    }
+}
+
+fn caseInsensitiveContains(haystack: [*c]const u8, needle: [*c]const u8) bool {
+    const haystack_lower = c.g_utf8_strdown(haystack, -1);
+    defer c.g_free(haystack_lower);
+    const needle_lower = c.g_utf8_strdown(needle, -1);
+    defer c.g_free(needle_lower);
+
+    var haystack_ptr = haystack_lower;
+    const needle_len = c.g_utf8_strlen(needle_lower, -1);
+    const haystack_len = c.g_utf8_strlen(haystack_lower, -1);
+
+    var i: c.glong = 0;
+    while (i <= haystack_len - needle_len) : (i += 1) {
+        const substring = c.g_utf8_substring(haystack_ptr, 0, needle_len);
+        defer c.g_free(substring);
+
+        if (std.mem.eql(u8, std.mem.span(substring), std.mem.span(needle_lower))) {
+            return true;
+        }
+
+        haystack_ptr = c.g_utf8_find_next_char(haystack_ptr, null);
+    }
+
+    return false;
+}
+fn searchEntryChanged(search_entry: *c.GtkSearchEntry, list_box: *c.GtkListBox) callconv(.C) void {
+    _ = search_entry;
+    c.gtk_list_box_invalidate_filter(list_box);
 }
 
 fn createEmptyDetailTreeView() ?*c.GtkWidget {
