@@ -37,20 +37,6 @@ var credentials: AwsConfiguration = undefined;
 const URL_DYNAMO = "http://localhost:4566";
 // const URL_DYNAMO = null;
 
-pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
-    // put whatever you want here
-    @setCold(true);
-    std.debug.print("PANIC: {s}\n", .{msg});
-    std.debug.print("Trace: {any}\n", .{error_return_trace});
-    if (error_return_trace) |trace| {
-        std.debug.dumpStackTrace(trace.*);
-    }
-    if (ret_addr) |addr| {
-        std.debug.print("Return address: 0x{x}\n", .{addr});
-    }
-    std.process.exit(1);
-}
-
 fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     const region = std.posix.getenv("AWS_REGION");
     const access_key = std.posix.getenv("AWS_ACCESS_KEY_ID");
@@ -143,6 +129,9 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_margin_top(@ptrCast(table_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(table_box), 10);
 
+    const table_name_label = c.gtk_label_new(null);
+    c.gtk_box_append(@ptrCast(table_box), @ptrCast(table_name_label));
+
     const tree_view = c.gtk_tree_view_new();
     if (tree_view == null) {
         std.debug.print("Failed to create detail tree view\n", .{});
@@ -163,7 +152,9 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
-    _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
+    const data_table = TableViewData{ .tree_view = tree_view, .table_name_label = table_name_label };
+    // _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
+    _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(data_table), null, c.G_CONNECT_AFTER);
     _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
@@ -292,12 +283,19 @@ fn switchToMainView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) 
     c.gtk_stack_set_visible_child_name(main_window.stack, "main");
 }
 
+const TableViewData = struct {
+    tree_view: *c.GtkTreeView,
+    table_name_label: *c.GtkLabel,
+};
+
 fn switchToTableView(
     list_box: *c.GtkListBox,
     row: *c.GtkListBoxRow,
     user_data: ?*anyopaque,
 ) callconv(.C) void {
-    const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
+    // const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
+    const table_view_data = @as(*TableViewData, @alignCast(@ptrCast(user_data)));
+    const tree_view = table_view_data.tree_view;
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
