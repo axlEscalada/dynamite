@@ -64,7 +64,7 @@ pub fn signRequest(
 
     // Step 1: Create the canonical request
     const canonical_request = try createCanonicalRequest(allocator, method, uri, query_string, payload_hash_hex, ur.host.?.percent_encoded, datetime, session_token, headers_to_sign.items);
-    // defer allocator.free(canonical_request);
+    defer allocator.free(canonical_request);
     std.debug.print("Canonical req: \n {s}\n", .{canonical_request});
     std.debug.print("END\n", .{});
 

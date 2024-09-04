@@ -34,8 +34,8 @@ const TableWindow = struct {
 var main_window: MainWindow = undefined;
 
 var credentials: AwsConfiguration = undefined;
-// const URL_DYNAMO = "http://localhost:4566";
-const URL_DYNAMO = null;
+const URL_DYNAMO = "http://localhost:4566";
+// const URL_DYNAMO = null;
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     // put whatever you want here
@@ -112,7 +112,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_scrolled_window_set_child(@ptrCast(scrolled_window), @alignCast(@ptrCast(main_window.list_box)));
     c.gtk_widget_set_vexpand(@ptrCast(scrolled_window), 1);
 
-    const search_entry = c.gtk_entry_new();
+    const search_entry = c.gtk_search_entry_new();
     c.gtk_box_append(@ptrCast(main_box), @ptrCast(search_entry));
 
     c.gtk_list_box_set_filter_func(main_window.list_box, filterTableItems, search_entry, null);
@@ -164,7 +164,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
-    // _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
+    _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});

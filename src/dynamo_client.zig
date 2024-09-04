@@ -121,7 +121,10 @@ pub const DynamoDbClient = struct {
         };
         const body = try json.stringifyAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
-        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
+        var arena_allocator = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena_allocator.deinit();
+
+        const sign_headers = try dynamo_signature.signRequest(arena_allocator.allocator(), "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
         try headers.appendSlice(sign_headers);
 
         var writer = std.ArrayList(u8).init(self.allocator);
