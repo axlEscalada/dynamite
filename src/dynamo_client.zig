@@ -8,16 +8,50 @@ const ListTablesResponse = @import("dynamo_types.zig").ListTablesResponse;
 const ScanResponse = @import("dynamo_types.zig").ScanResponse;
 const DataValue = @import("dynamo_types.zig").DataValue;
 const null_writer = std.io.null_writer;
+const DateTime = @import("date_time.zig").DateTime;
+const dynamo_signature = @import("dynamo_signature.zig");
+const DEFAULT_ENDPOINT = "https://dynamodb.us-east-1.amazonaws.com";
+const GLOBAL_ENDPOINT = "https://dynamodb.{s}.amazonaws.com";
+const DEFAULT_REGION = "us-east-1";
+
+pub const Configuration = struct {
+    region: []const u8,
+    access_key: []const u8,
+    secret_access_key: []const u8,
+    session_token: ?[]const u8,
+
+    pub fn init(region: ?[]const u8, access_key: ?[]const u8, secret_access_key: ?[]const u8, session_token: ?[]const u8) Configuration {
+        return Configuration{
+            .region = region orelse DEFAULT_REGION,
+            .access_key = access_key orelse "",
+            .secret_access_key = secret_access_key orelse "",
+            .session_token = session_token,
+        };
+    }
+};
 
 pub const DynamoDbClient = struct {
     allocator: std.mem.Allocator,
     endpoint: []const u8,
+    credentials: Configuration,
 
-    pub fn init(allocator: std.mem.Allocator, endpoint: []const u8) !DynamoDbClient {
-        const owned_endpoint = try allocator.dupe(u8, endpoint);
+    pub fn init(allocator: std.mem.Allocator, endpoint: ?[]const u8, credentials: Configuration) !DynamoDbClient {
+        const owned_endpoint: []const u8 = blk: {
+            if (endpoint) |endpt| {
+                break :blk try allocator.dupe(u8, endpt);
+            }
+            break :blk std.fmt.allocPrint(allocator, GLOBAL_ENDPOINT, .{credentials.region}) catch |e| {
+                std.log.err("Error allocating endpoint {}\n", .{e});
+                return e;
+            };
+        };
+
+        std.debug.print("endpoint: {s}\n", .{owned_endpoint});
+
         return DynamoDbClient{
             .allocator = allocator,
             .endpoint = owned_endpoint,
+            .credentials = credentials,
         };
     }
 
@@ -43,6 +77,10 @@ pub const DynamoDbClient = struct {
 
         var writer = std.ArrayList(u8).init(allocator);
         defer writer.deinit();
+
+        const sign_headers = try dynamo_signature.signRequest(allocator, "POST", "/", "", json_string.items, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
+        try headers.appendSlice(sign_headers);
+
         const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
@@ -65,27 +103,31 @@ pub const DynamoDbClient = struct {
         const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
         defer self.allocator.free(json_str);
 
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", json_str, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
+        try headers.appendSlice(sign_headers);
+
         _ = try self.sendRequest("POST", headers.items, json_str, null_writer);
     }
 
     pub fn listTables(self: *DynamoDbClient) !ListTablesResponse {
         var headers = std.ArrayList(std.http.Header).init(self.allocator);
         defer headers.deinit();
-        try headers.append(.{ .name = "Content-Type", .value = "application/json" });
+        try headers.append(.{ .name = "Content-Type", .value = "application/x-amz-json-1.0" });
         try headers.append(.{ .name = "X-Amz-Target", .value = "DynamoDB_20120810.ListTables" });
 
         const payload = .{
             .Limit = 100,
             .ExclusiveStartTableName = null,
         };
-
-        const json_str = try json.stringifyAlloc(self.allocator, payload, .{});
-        defer self.allocator.free(json_str);
+        const body = try json.stringifyAlloc(self.allocator, payload, .{});
+        defer self.allocator.free(body);
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
+        try headers.appendSlice(sign_headers);
 
         var writer = std.ArrayList(u8).init(self.allocator);
         defer writer.deinit();
 
-        const bytes_read = try self.sendRequest("POST", headers.items, json_str, writer.writer());
+        const bytes_read = try self.sendRequest("POST", headers.items, body, writer.writer());
 
         std.debug.print("response to parse response_buff[0..{d}]: {s}\n", .{ bytes_read, writer.items });
         var parsed = try std.json.parseFromSlice(ListTablesResponse, self.allocator, writer.items, .{ .ignore_unknown_fields = true });
@@ -129,10 +171,22 @@ pub const DynamoDbClient = struct {
         _ = try self.sendRequest("POST", headers.items, json_str.items, null);
     }
 
+    fn dumpMemory(ptr: [*]const u8, len: usize) void {
+        std.debug.print("Memory dump at 0x{x}:\n", .{@ptrFromInt(ptr)});
+        for (0..len) |i| {
+            if (i % 16 == 0 and i != 0) std.debug.print("\n", .{});
+            std.debug.print("{x:0>2} ", .{ptr[i]});
+        }
+        std.debug.print("\n", .{});
+    }
+
     fn sendRequest(self: *DynamoDbClient, comptime method: []const u8, headers: []http.Header, body: []const u8, writer: anytype) !usize {
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
         const uri = try std.Uri.parse(self.endpoint);
+        for (headers) |header| {
+            std.debug.print("Header: {s}:{s}\n", .{ header.name, header.value });
+        }
 
         var server_header: [1024]u8 = undefined;
         var request = try client.open(@field(http.Method, method), uri, .{ .server_header_buffer = &server_header, .extra_headers = headers });
@@ -170,9 +224,17 @@ pub const DynamoDbClient = struct {
 
 test "list tables" {
     const allocator = std.testing.allocator;
-    var client = try DynamoDbClient.init(allocator, "http://localhost:4566");
+    const arena = std.heap.ArenaAllocator.init(allocator);
+    arena.deinit();
+
+    const AWS_ACCESS_KEY_ID = "test";
+    const AWS_SECRET_ACCESS_KEY = "test";
+    const AWS_SESSION_TOKEN: ?[]const u8 = null;
+    const credentials = Configuration.init("us-east-1", AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN);
+    var client = try DynamoDbClient.init(allocator, "http://localhost:4566", credentials);
     defer client.deinit();
 
+    // try client.createTable("test_table", "id");
     var tables = try client.listTables();
     defer tables.deinit(allocator);
 
