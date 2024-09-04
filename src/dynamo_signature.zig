@@ -8,8 +8,6 @@ const DateTime = @import("date_time.zig").DateTime;
 const AWS4_HMAC_SHA256 = "AWS4-HMAC-SHA256";
 const AWS4_REQUEST = "aws4_request";
 const SERVICE = "dynamodb";
-// const GLOBAL_ENDPOINT = "dynamodb.amazonaws.com";
-// const GLOBAL_ENDPOINT = "dynamodb.us-east-1.amazonaws.com";
 const DEFAULT_REGION = "us-east-1";
 
 pub fn signRequest(
@@ -133,21 +131,6 @@ fn createCanonicalRequest(
         try canonical.appendSlice(header.value);
         try canonical.appendSlice("\n");
     }
-    // try canonical.appendSlice("content-type:application/x-amz-json-1.0\n");
-    // try canonical.appendSlice("host:");
-    // try canonical.appendSlice(host);
-    // try canonical.appendSlice("\n");
-    // try canonical.appendSlice("x-amz-content-sha256:");
-    // try canonical.appendSlice(payload_hash_hex);
-    // try canonical.appendSlice("\n");
-    // try canonical.appendSlice("x-amz-date:");
-    // try canonical.appendSlice(datetime);
-    // try canonical.appendSlice("\n");
-    // try canonical.appendSlice("x-amz-security-token:");
-    // try canonical.appendSlice(session_token);
-    // try canonical.appendSlice("\n");
-    // try canonical.appendSlice("x-amz-target:DynamoDB_20120810.ListTables\n");
-    // try canonical.appendSlice("\n");
 
     // Signed headers (in alphabetical order, lowercase)
     try canonical.appendSlice("\n");
@@ -254,26 +237,6 @@ fn createAuthorizationHeader(
     return result;
 }
 
-// fn createAuthorizationHeader(
-//     allocator: std.mem.Allocator,
-//     access_key: []const u8,
-//     date: []const u8,
-//     signature: []const u8,
-// ) ![]u8 {
-//     const credential_scope = try fmt.allocPrint(allocator, "{s}/{s}/{s}/{s}", .{
-//         date,
-//         DEFAULT_REGION,
-//         SERVICE,
-//         AWS4_REQUEST,
-//     });
-//     defer allocator.free(credential_scope);
-//
-//     // Update the SignedHeaders to include all headers that are part of the signature
-//     const signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-target";
-//
-//     return fmt.allocPrint(allocator, "{s} Credential={s}/{s}, SignedHeaders={s}, Signature={s}", .{ AWS4_HMAC_SHA256, access_key, credential_scope, signed_headers, signature });
-// }
-
 fn hmacSha256(allocator: std.mem.Allocator, key: []const u8, data: []const u8) ![]u8 {
     var hmac = crypto.auth.hmac.sha2.HmacSha256.init(key);
     hmac.update(data);
@@ -301,35 +264,35 @@ fn formatDatetime(allocator: std.mem.Allocator, date: DateTime) ![]u8 {
     });
 }
 
-// test "Test DynamoDB request signing without region" {
-//     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-//     defer arena.deinit();
-//     const allocator = arena.allocator();
-//
-//     const method = "POST";
-//     const uri = "/";
-//     const query_string = "";
-//     const payload = "{}";
-//     const AWS_ACCESS_KEY_ID = "";
-//     const AWS_SECRET_ACCESS_KEY = "";
-//     const AWS_SESSION_TOKEN = "";
-//     const date = DateTime{
-//         .year = 2024,
-//         .month = 8,
-//         .day = 22,
-//         .hour = 13,
-//         .minute = 30,
-//         .second = 5,
-//     };
-//     var append_headers = std.ArrayList(std.http.Header).init(std.testing.allocator);
-//     defer append_headers.deinit();
-//     try append_headers.append(.{ .name = "Content-Type", .value = "application/x-amz-json-1.0" });
-//     try append_headers.append(.{ .name = "X-Amz-Target", .value = "DynamoDB_20120810.ListTables" });
-//
-//     const headers = try signRequest(allocator, method, uri, query_string, payload, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, date, append_headers.items, "localhost:4566");
-//     defer allocator.free(headers);
-//
-//     for (headers) |header| {
-//         std.debug.print("{s}: {s}\n", .{ header.name, header.value });
-//     }
-// }
+test "Test DynamoDB request signing without region" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const method = "POST";
+    const uri = "/";
+    const query_string = "";
+    const payload = "{}";
+    const AWS_ACCESS_KEY_ID = "";
+    const AWS_SECRET_ACCESS_KEY = "";
+    const AWS_SESSION_TOKEN = "";
+    const date = DateTime{
+        .year = 2024,
+        .month = 8,
+        .day = 22,
+        .hour = 13,
+        .minute = 30,
+        .second = 5,
+    };
+    var append_headers = std.ArrayList(std.http.Header).init(std.testing.allocator);
+    defer append_headers.deinit();
+    try append_headers.append(.{ .name = "Content-Type", .value = "application/x-amz-json-1.0" });
+    try append_headers.append(.{ .name = "X-Amz-Target", .value = "DynamoDB_20120810.ListTables" });
+
+    const headers = try signRequest(allocator, method, uri, query_string, payload, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, date, append_headers.items, "localhost:4566");
+    defer allocator.free(headers);
+
+    for (headers) |header| {
+        std.debug.print("{s}: {s}\n", .{ header.name, header.value });
+    }
+}

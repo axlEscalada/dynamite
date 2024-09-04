@@ -167,7 +167,6 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     // _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
-        // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
     };
@@ -300,7 +299,6 @@ fn switchToTableView(
 ) callconv(.C) void {
     const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
-    // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
