@@ -10,27 +10,43 @@ const DataValue = @import("dynamo_types.zig").DataValue;
 const null_writer = std.io.null_writer;
 const DateTime = @import("date_time.zig").DateTime;
 const dynamo_signature = @import("dynamo_signature.zig");
-const GLOBAL_ENDPOINT = "https://dynamodb.us-east-1.amazonaws.com";
+const DEFAULT_ENDPOINT = "https://dynamodb.us-east-1.amazonaws.com";
+const GLOBAL_ENDPOINT = "https://dynamodb.{s}.amazonaws.com";
+const DEFAULT_REGION = "us-east-1";
 
-pub const Credentials = struct {
-    region: ?[:0]const u8,
-    access_key: [:0]const u8,
-    secret_access_key: [:0]const u8,
-    session_token: [:0]const u8,
+pub const Configuration = struct {
+    region: []const u8,
+    access_key: []const u8,
+    secret_access_key: []const u8,
+    session_token: ?[]const u8,
+
+    pub fn init(region: ?[]const u8, access_key: ?[]const u8, secret_access_key: ?[]const u8, session_token: ?[]const u8) Configuration {
+        return Configuration{
+            .region = region orelse DEFAULT_REGION,
+            .access_key = access_key orelse "",
+            .secret_access_key = secret_access_key orelse "",
+            .session_token = session_token,
+        };
+    }
 };
 
 pub const DynamoDbClient = struct {
     allocator: std.mem.Allocator,
     endpoint: []const u8,
-    credentials: Credentials,
+    credentials: Configuration,
 
-    pub fn init(allocator: std.mem.Allocator, endpoint: ?[]const u8, credentials: Credentials) !DynamoDbClient {
+    pub fn init(allocator: std.mem.Allocator, endpoint: ?[]const u8, credentials: Configuration) !DynamoDbClient {
         const owned_endpoint: []const u8 = blk: {
             if (endpoint) |endpt| {
                 break :blk try allocator.dupe(u8, endpt);
             }
-            break :blk GLOBAL_ENDPOINT;
+            break :blk std.fmt.allocPrint(allocator, GLOBAL_ENDPOINT, .{credentials.region}) catch |e| {
+                std.log.err("Error allocating endpoint {}\n", .{e});
+                return e;
+            };
         };
+
+        std.debug.print("endpoint: {s}\n", .{owned_endpoint});
 
         return DynamoDbClient{
             .allocator = allocator,
@@ -40,8 +56,7 @@ pub const DynamoDbClient = struct {
     }
 
     pub fn deinit(self: *DynamoDbClient) void {
-        _ = self;
-        // self.allocator.free(self.endpoint);
+        self.allocator.free(self.endpoint);
     }
 
     pub fn scanTable(self: *DynamoDbClient, allocator: std.mem.Allocator, comptime T: type, table_name: []const u8) !ScanResponse(T) {
@@ -63,7 +78,7 @@ pub const DynamoDbClient = struct {
         var writer = std.ArrayList(u8).init(allocator);
         defer writer.deinit();
 
-        const sign_headers = try dynamo_signature.signRequest(allocator, "POST", "/", "", json_string.items, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
+        const sign_headers = try dynamo_signature.signRequest(allocator, "POST", "/", "", json_string.items, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
         try headers.appendSlice(sign_headers);
 
         const bytes_read = try self.sendRequest("POST", headers.items, json_string.items, writer.writer());
@@ -88,7 +103,7 @@ pub const DynamoDbClient = struct {
         const json_str = try json.stringifyAlloc(self.allocator, &request, .{});
         defer self.allocator.free(json_str);
 
-        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", json_str, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", json_str, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
         try headers.appendSlice(sign_headers);
 
         _ = try self.sendRequest("POST", headers.items, json_str, null_writer);
@@ -106,7 +121,7 @@ pub const DynamoDbClient = struct {
         };
         const body = try json.stringifyAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
-        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items);
+        const sign_headers = try dynamo_signature.signRequest(self.allocator, "POST", "/", "", body, self.credentials.access_key, self.credentials.secret_access_key, self.credentials.session_token, null, headers.items, self.endpoint);
         try headers.appendSlice(sign_headers);
 
         var writer = std.ArrayList(u8).init(self.allocator);
@@ -155,6 +170,7 @@ pub const DynamoDbClient = struct {
 
         _ = try self.sendRequest("POST", headers.items, json_str.items, null);
     }
+
     fn dumpMemory(ptr: [*]const u8, len: usize) void {
         std.debug.print("Memory dump at 0x{x}:\n", .{@ptrFromInt(ptr)});
         for (0..len) |i| {
@@ -165,65 +181,60 @@ pub const DynamoDbClient = struct {
     }
 
     fn sendRequest(self: *DynamoDbClient, comptime method: []const u8, headers: []http.Header, body: []const u8, writer: anytype) !usize {
-        std.debug.print("HEADERS: \n", .{});
-        for (headers) |header| {
-            std.debug.print("{s}: {s}\n", .{ header.name, header.value });
-        }
-        std.debug.print("END HEADERS\n", .{});
         var client = http.Client{ .allocator = self.allocator };
         defer client.deinit();
         const uri = try std.Uri.parse(self.endpoint);
-        std.debug.print("endpoint: {s}\n", .{self.endpoint});
-        std.debug.print("uri: {s}\n", .{uri});
+        for (headers) |header| {
+            std.debug.print("Header: {s}:{s}\n", .{ header.name, header.value });
+        }
 
-        const server_header = try self.allocator.alloc(u8, 4096);
-        defer self.allocator.free(server_header);
-
-        var request = try client.open(@field(http.Method, method), uri, .{ .server_header_buffer = server_header, .extra_headers = headers });
+        var server_header: [1024]u8 = undefined;
+        var request = try client.open(@field(http.Method, method), uri, .{ .server_header_buffer = &server_header, .extra_headers = headers });
         defer request.deinit();
         std.debug.print("server_header: {s}\n", .{server_header});
         std.debug.print("body: {s}\n", .{body});
 
         request.transfer_encoding = .{ .content_length = body.len };
-        request.keep_alive = true;
         try request.send();
         try request.writeAll(body);
 
         try request.finish();
         try request.wait();
 
+        const BUFFER_SIZE = 4096;
+        var buffer: [BUFFER_SIZE]u8 = undefined;
+
         const status = request.response.status;
-
-        std.debug.print("Response status: {}\n", .{status});
-
         var total_bytes: usize = 0;
-        var buffer = try self.allocator.alloc(u8, 4096000);
-        defer self.allocator.free(buffer);
 
         while (true) {
-            const bytes_read = try request.reader().read(buffer);
+            const bytes_read = try request.reader().read(&buffer);
             if (bytes_read == 0) break;
             try writer.writeAll(buffer[0..bytes_read]);
             total_bytes += bytes_read;
         }
+        if (status != .ok) {
+            std.debug.print("Error: HTTP status {d}\n", .{@intFromEnum(status)});
+            return error.HttpRequestFailed;
+        }
+        std.debug.print("Request succeeded\n", .{});
         return total_bytes;
     }
 };
 
 test "list tables" {
     const allocator = std.testing.allocator;
-    const AWS_ACCESS_KEY_ID = "";
-    const AWS_SECRET_ACCESS_KEY = "";
-    const AWS_SESSION_TOKEN = "";
-    const credentials = Credentials{
-        .region = "us-east-1",
-        .access_key = AWS_ACCESS_KEY_ID,
-        .secret_access_key = AWS_SECRET_ACCESS_KEY,
-        .session_token = AWS_SESSION_TOKEN,
-    };
-    var client = try DynamoDbClient.init(allocator, null, credentials);
+    const arena = std.heap.ArenaAllocator.init(allocator);
+    arena.deinit();
+
+    const AWS_ACCESS_KEY_ID = "test";
+    const AWS_SECRET_ACCESS_KEY = "test";
+    const AWS_SESSION_TOKEN: ?[]const u8 = null;
+    const credentials = Configuration.init("us-east-1", AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN);
+    var client = try DynamoDbClient.init(allocator, "http://localhost:4566", credentials);
     defer client.deinit();
 
+    // try client.createTable("test_table", "id");
     var tables = try client.listTables();
     defer tables.deinit(allocator);
 

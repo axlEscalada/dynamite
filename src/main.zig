@@ -8,7 +8,7 @@ const gtk = @import("gtk.zig");
 const builtin = @import("builtin");
 const ArrayList = std.ArrayList;
 const StringHashMap = std.StringHashMap;
-const AwsCredentials = @import("dynamo_client.zig").Credentials;
+const AwsConfiguration = @import("dynamo_client.zig").Configuration;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
@@ -33,7 +33,9 @@ const TableWindow = struct {
 
 var main_window: MainWindow = undefined;
 
-var credentials: AwsCredentials = undefined;
+var credentials: AwsConfiguration = undefined;
+// const URL_DYNAMO = "http://localhost:4566";
+const URL_DYNAMO = null;
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     // put whatever you want here
@@ -63,16 +65,13 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     if (secret_access_key) |sc| {
         std.debug.print("secret {s}\n", .{sc});
     }
-    // std.debug.print("Region: {?}, Access Key: {s}, Secret Access Key: {s}, Session Token: {s}\n", .{ region, access_key, secret_access_key, session_token });
 
-    credentials = AwsCredentials{
-        .region = region,
-        .access_key = access_key.?,
-        .secret_access_key = secret_access_key.?,
-        .session_token = session_token.?,
-    };
+    if (region) |rg| {
+        std.debug.print("region {s}", .{rg});
+    }
 
-    // AWS_SESSION_TOKEN
+    credentials = AwsConfiguration.init(region, access_key, secret_access_key, session_token);
+
     _ = user_data;
     loadCss();
 
@@ -167,7 +166,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
     // _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
-    var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
+    var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
@@ -302,7 +301,7 @@ fn switchToTableView(
     const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     // var dynamo_client = DynamoDbClient.init(global_allocator, "http://localhost:4566", credentials) catch |e| {
-    var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
+    var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
     };
@@ -514,7 +513,7 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
         const table_name = std.mem.span(text);
         std.debug.print("Entered text: {s}\n", .{table_name});
 
-        var dynamo_client = DynamoDbClient.init(global_allocator, null, credentials) catch |e| {
+        var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
             std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
             c.gtk_label_set_text(main_window.label, "Error creating DynamoDbClient");
             return;
