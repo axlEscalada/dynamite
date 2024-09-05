@@ -26,11 +26,6 @@ const MainWindow = struct {
     label: ?*c.GtkLabel,
 };
 
-const TableWindow = struct {
-    tree_view: *c.GtkTreeView,
-    list_store: *c.GtkListStore,
-};
-
 var main_window: MainWindow = undefined;
 
 var credentials: AwsConfiguration = undefined;
@@ -152,9 +147,15 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
-    const data_table = TableViewData{ .tree_view = tree_view, .table_name_label = table_name_label };
-    // _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(tree_view), null, c.G_CONNECT_AFTER);
-    _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(data_table), null, c.G_CONNECT_AFTER);
+    const table_view_data = global_allocator.create(TableViewData) catch |e| {
+        std.log.err("Error creating TableViewData: {any}\n", .{e});
+        return;
+    };
+    table_view_data.* = .{
+        .tree_view = @ptrCast(tree_view),
+        .table_name_label = @ptrCast(table_name_label),
+    };
+    _ = c.g_signal_connect_data(@ptrCast(main_window.list_box), "row-activated", @ptrCast(&switchToTableView), @ptrCast(table_view_data), null, c.G_CONNECT_AFTER);
     _ = c.g_signal_connect_data(@ptrCast(search_entry), "search-changed", @ptrCast(&searchEntryChanged), main_window.list_box, null, c.G_CONNECT_AFTER);
 
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
@@ -293,9 +294,17 @@ fn switchToTableView(
     row: *c.GtkListBoxRow,
     user_data: ?*anyopaque,
 ) callconv(.C) void {
+    std.debug.print("user_data: {any}\n", .{user_data});
+    const data = @as(*TableViewData, @ptrCast(@alignCast(user_data)));
+    std.debug.print("data: {any}\n", .{data});
+    const tree_view = data.tree_view;
+    std.debug.print("tree_view: {any}\n", .{tree_view});
+    const table_name_label = data.table_name_label;
     // const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
-    const table_view_data = @as(*TableViewData, @alignCast(@ptrCast(user_data)));
-    const tree_view = table_view_data.tree_view;
+    gtk.handyFuncGetType(@ptrCast(@alignCast(list_box)));
+    gtk.handyFuncGetType(@ptrCast(row));
+    gtk.handyFuncGetType(@ptrCast(tree_view));
+    // gtk.handyFuncGetType(@ptrCast(@alignCast(table_name_label)));
     std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
@@ -312,6 +321,7 @@ fn switchToTableView(
     const text_c = c.gtk_label_get_text(@as(*c.GtkLabel, @ptrCast(item)));
 
     const table = std.mem.span(text_c);
+    c.gtk_label_set_text(@ptrCast(table_name_label), table);
 
     var arena_allocator = std.heap.ArenaAllocator.init(global_allocator);
     defer arena_allocator.deinit();
@@ -381,7 +391,7 @@ fn switchToTableView(
         std.debug.print("\n", .{});
     }
 
-    populateDetailTreeView(tree_view, columnNames.items, rows.items) catch |e| {
+    populateDetailTreeView(@ptrCast(tree_view), columnNames.items, rows.items) catch |e| {
         std.log.err("Error while populating column {any}\n", .{e});
         return;
     };
@@ -401,11 +411,6 @@ fn contains(list: std.ArrayList([]const u8), item: []const u8) bool {
     }
     return false;
 }
-
-const TableData = struct {
-    headers: [][]const u8,
-    data: []const [][]const u8,
-};
 
 fn populateDetailTreeView(tree_widget: ?*c.GtkWidget, column_names: [][]const u8, data: []StringHashMap([]const u8)) !void {
     const tree_view: *c.GtkTreeView = @alignCast(@ptrCast(tree_widget));
