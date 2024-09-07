@@ -2,6 +2,10 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("gtk/gtk.h");
 });
+const objc = @import("objc");
+// const adw = @cImport({
+//     @cInclude("adwaita.h");
+// });
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
 const gtk = @import("gtk.zig");
@@ -200,9 +204,7 @@ fn filterTableItems(row: ?*c.GtkListBoxRow, user_data: ?*anyopaque) callconv(.C)
 
     if (caseInsensitiveContains(item_text, search_text)) {
         return 1; // Show the item
-    } else {
-        return 0; // Hide the item
-    }
+    } else return 0; // Hide the item
 }
 
 fn caseInsensitiveContains(haystack: [*c]const u8, needle: [*c]const u8) bool {
@@ -229,6 +231,7 @@ fn caseInsensitiveContains(haystack: [*c]const u8, needle: [*c]const u8) bool {
 
     return false;
 }
+
 fn searchEntryChanged(search_entry: *c.GtkSearchEntry, list_box: *c.GtkListBox) callconv(.C) void {
     _ = search_entry;
     c.gtk_list_box_invalidate_filter(list_box);
@@ -294,18 +297,10 @@ fn switchToTableView(
     row: *c.GtkListBoxRow,
     user_data: ?*anyopaque,
 ) callconv(.C) void {
-    std.debug.print("user_data: {any}\n", .{user_data});
+    _ = list_box;
     const data = @as(*TableViewData, @ptrCast(@alignCast(user_data)));
-    std.debug.print("data: {any}\n", .{data});
     const tree_view = data.tree_view;
-    std.debug.print("tree_view: {any}\n", .{tree_view});
     const table_name_label = data.table_name_label;
-    // const tree_view = @as(?*c.GtkWidget, @alignCast(@ptrCast(user_data)));
-    gtk.handyFuncGetType(@ptrCast(@alignCast(list_box)));
-    gtk.handyFuncGetType(@ptrCast(row));
-    gtk.handyFuncGetType(@ptrCast(tree_view));
-    // gtk.handyFuncGetType(@ptrCast(@alignCast(table_name_label)));
-    std.debug.print("Reach row func {any} row: {any}\n", .{ list_box, row });
     var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
         std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
         return;
@@ -322,6 +317,7 @@ fn switchToTableView(
 
     const table = std.mem.span(text_c);
     c.gtk_label_set_text(@ptrCast(table_name_label), table);
+    // updateHeaderBoxTitle(main_window.stack.?, "table", table);
 
     var arena_allocator = std.heap.ArenaAllocator.init(global_allocator);
     defer arena_allocator.deinit();
@@ -374,21 +370,6 @@ fn switchToTableView(
             std.log.err("Error adding row: {any}\n", .{err});
             return;
         };
-    }
-
-    std.debug.print("Column Names:\n", .{});
-    for (columnNames.items) |name| {
-        std.debug.print("{s} ", .{name});
-    }
-    std.debug.print("\n\n", .{});
-
-    std.debug.print("Rows:\n", .{});
-    for (rows.items) |r| {
-        var it = r.iterator();
-        while (it.next()) |entry| {
-            std.debug.print("{s}: {s}, ", .{ entry.key_ptr.*, entry.value_ptr.* });
-        }
-        std.debug.print("\n", .{});
     }
 
     populateDetailTreeView(@ptrCast(tree_view), columnNames.items, rows.items) catch |e| {
@@ -453,21 +434,45 @@ fn populateDetailTreeView(tree_widget: ?*c.GtkWidget, column_names: [][]const u8
     c.gtk_tree_view_set_model(tree_view, @ptrCast(list_store));
 }
 
+fn updateHeaderBoxTitle(stack: *c.GtkStack, view_name: [*:0]const u8, new_title: [*:0]const u8) void {
+    const view = c.gtk_stack_get_child_by_name(stack, view_name);
+    if (view == null) return;
+
+    const main_box = c.gtk_widget_get_first_child(@ptrCast(view));
+    if (main_box == null) return;
+
+    const header_box = c.gtk_widget_get_first_child(main_box);
+    if (header_box == null) return;
+
+    var header_box_title = c.gtk_widget_get_first_child(header_box);
+    header_box_title = c.gtk_widget_get_next_sibling(header_box_title);
+
+    const widget_type = c.G_OBJECT_TYPE(header_box_title);
+    if (c.g_type_is_a(widget_type, c.gtk_label_get_type()) != 0) {
+        c.gtk_label_set_text(@ptrCast(header_box_title), new_title);
+    }
+}
+
 fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
-
     const header_box = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
-    c.gtk_widget_set_margin_start(@ptrCast(header_box), 10);
+    c.gtk_widget_set_margin_start(@ptrCast(header_box), 0);
     c.gtk_widget_set_margin_top(@ptrCast(header_box), 10);
-    c.gtk_widget_set_margin_bottom(@ptrCast(header_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(header_box), 0);
 
     const back_button = createBackMainButton();
-    c.gtk_box_append(@ptrCast(header_box), @ptrCast(back_button));
+    const header_box_title = c.gtk_label_new("Replace with title");
+    c.gtk_widget_set_hexpand(@ptrCast(header_box_title), 1);
+    c.gtk_label_set_xalign(@ptrCast(header_box_title), 0.5);
 
     const spacer = c.gtk_box_new(c.GTK_ORIENTATION_HORIZONTAL, 0);
-    c.gtk_widget_set_hexpand(@ptrCast(spacer), 1);
+    c.gtk_widget_set_hexpand(@ptrCast(spacer), 0);
+
+    c.gtk_box_append(@ptrCast(header_box), @ptrCast(back_button));
+    c.gtk_box_append(@ptrCast(header_box), @ptrCast(header_box_title));
     c.gtk_box_append(@ptrCast(header_box), @ptrCast(spacer));
 
+    c.gtk_box_set_homogeneous(@ptrCast(header_box), 1);
     c.gtk_box_append(@ptrCast(main_box), @ptrCast(header_box));
 
     if (content) |widget| {
@@ -479,10 +484,11 @@ fn createViewWithBackButton(content: ?*c.GtkWidget) *c.GtkWidget {
 
 fn createBackMainButton() *c.GtkWidget {
     const back_button = c.gtk_button_new_from_icon_name("go-previous-symbolic");
-    c.gtk_widget_add_css_class(@ptrCast(back_button), "back-button");
+    // c.gtk_widget_add_css_class(@ptrCast(back_button), "back-button");
+    c.gtk_widget_add_css_class(@ptrCast(back_button), "raised");
     c.gtk_widget_set_halign(@ptrCast(back_button), c.GTK_ALIGN_START);
     c.gtk_widget_set_valign(@ptrCast(back_button), c.GTK_ALIGN_START);
-    c.gtk_widget_set_margin_start(@ptrCast(back_button), 0);
+    c.gtk_widget_set_margin_start(@ptrCast(back_button), 10);
     c.gtk_widget_set_margin_top(@ptrCast(back_button), 0);
     _ = c.g_signal_connect_data(@ptrCast(back_button), "clicked", @ptrCast(&switchToMainView), null, null, 0);
     return back_button;
@@ -490,7 +496,6 @@ fn createBackMainButton() *c.GtkWidget {
 
 fn loadCss() void {
     const css_data = @embedFile("css/style.css");
-    std.debug.print("css_data: {s}\n", .{css_data});
     const css_provider = c.gtk_css_provider_new();
     c.gtk_css_provider_load_from_data(css_provider, css_data, -1);
     const display = c.gdk_display_get_default();
@@ -503,16 +508,14 @@ fn loadCss() void {
 }
 
 fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void {
-    std.debug.print("Open create table window\n", .{});
     _ = user_data;
     _ = button;
-    std.debug.print("Button clicked\n", .{});
 
+    // updateHeaderBoxTitle(main_window.stack.?, "create", "Create Table");
     const buffer = c.gtk_entry_get_buffer(main_window.entry);
     const text = c.gtk_entry_buffer_get_text(buffer);
     if (text != null and c.gtk_entry_buffer_get_length(buffer) > 0) {
         const table_name = std.mem.span(text);
-        std.debug.print("Entered text: {s}\n", .{table_name});
 
         var dynamo_client = DynamoDbClient.init(global_allocator, URL_DYNAMO, credentials) catch |e| {
             std.debug.print("Error creating DynamoDbClient: {}\n", .{e});
@@ -527,7 +530,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
             return;
         };
 
-        std.debug.print("Table created successfully\n", .{});
         c.gtk_label_set_text(main_window.label, "Table created successfully");
 
         c.gtk_list_box_remove_all(main_window.list_box);
@@ -536,7 +538,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
             return;
         };
         defer tables.deinit(global_allocator);
-        std.debug.print("Tables main {any}\n", .{tables});
 
         for (tables.TableNames.items) |table| {
             const c_table_name = global_allocator.dupeZ(u8, table) catch |e| {
@@ -544,7 +545,6 @@ fn createTable(button: ?*c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void 
                 return;
             };
             defer global_allocator.free(c_table_name);
-            std.debug.print("Table name: {s} C table name: {s}\n", .{ table, c_table_name });
             const list_item = c.gtk_label_new(c_table_name);
             c.gtk_list_box_insert(main_window.list_box, list_item, -1);
 
@@ -581,7 +581,6 @@ fn debug_handler(
 pub fn main() !void {
     defer _ = gpa.deinit();
     global_allocator = gpa.allocator();
-    std.debug.print("Starting application\n", .{});
 
     // Enable GTK debugging
     _ = c.g_setenv("G_MESSAGES_DEBUG", "all", 1);
@@ -598,10 +597,6 @@ pub fn main() !void {
     defer c.g_object_unref(app);
 
     _ = c.g_signal_connect_data(app, "activate", @as(c.GCallback, @ptrCast(&activate)), null, null, c.G_CONNECT_DEFAULT);
-
-    std.debug.print("Signal connected\n", .{});
-
-    std.debug.print("Running application\n", .{});
 
     const status = c.g_application_run(@as(*c.GApplication, @ptrCast(app)), 0, null);
     std.debug.print("Application exited with status: {}\n", .{status});

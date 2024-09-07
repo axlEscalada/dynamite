@@ -29,19 +29,19 @@ pub fn signRequest(
         } else break :blk DateTime.now();
     };
     const date = try formatDate(allocator, now);
-    // defer allocator.free(date);
+    defer allocator.free(date);
     const datetime = try formatDatetime(allocator, now);
-    // defer allocator.free(datetime);
+    defer allocator.free(datetime);
     const ur = try std.Uri.parse(endpoint);
 
     var payload_hash: [32]u8 = undefined;
     crypto.hash.sha2.Sha256.hash(payload, &payload_hash, .{});
     const payload_hash_hex = try allocator.alloc(u8, 64);
-    // defer allocator.free(payload_hash_hex);
+    defer allocator.free(payload_hash_hex);
     _ = try std.fmt.bufPrint(payload_hash_hex, "{s}", .{std.fmt.fmtSliceHexLower(&payload_hash)});
     std.debug.print("Payload hash: {s}\n", .{payload_hash_hex});
     var headers_to_sign = std.ArrayList(std.http.Header).init(allocator);
-    // defer headers_to_sign.deinit();
+    defer headers_to_sign.deinit();
     for (append_headers) |header| {
         try headers_to_sign.append(header);
     }
@@ -70,12 +70,12 @@ pub fn signRequest(
 
     // Step 2: Create the string to sign
     const string_to_sign = try createStringToSign(allocator, datetime, canonical_request);
-    // defer allocator.free(string_to_sign);
+    defer allocator.free(string_to_sign);
     std.debug.print("String to sign: {s}\n", .{string_to_sign});
 
     // Step 3: Calculate the signature
     const signature = try calculateSignature(allocator, secret_key, date, string_to_sign);
-    // defer allocator.free(signature);
+    defer allocator.free(signature);
     std.debug.print("Signature: {s}\n", .{signature});
 
     // Step 4: Create the authorization header

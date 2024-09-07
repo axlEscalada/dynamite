@@ -237,7 +237,6 @@ test "list tables" {
     var client = try DynamoDbClient.init(allocator, "http://localhost:4566", credentials);
     defer client.deinit();
 
-    // try client.createTable("test_table", "id");
     var tables = try client.listTables();
     defer tables.deinit(allocator);
 
