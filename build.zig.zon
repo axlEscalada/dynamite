@@ -23,6 +23,13 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        .@"zig-objc" = .{
+            .url = "https://github.com/mitchellh/zig-objc/archive/main.tar.gz",
+            .hash = "122034b3e15d582d8d101a7713e5f13c872b8b8eb6d9cb47515b8e34ee75e122630d",
+            .lazy = false,
+            // You might want to use a specific commit hash for stability
+            // .hash = "12345...", // replace with the actual hash
+        },
         // See `zig fetch --save <url>` for a command-line interface for adding dependencies.
         //.example = .{
         //    // When updating this field to a new URL, be sure to delete the corresponding

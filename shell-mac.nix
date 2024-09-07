@@ -10,6 +10,8 @@ pkgs.mkShell {
     gdk-pixbuf
     pkg-config
     gtk-mac-integration
+    libadwaita
+    darwin.apple_sdk.frameworks.Cocoa
   ];
   shellHook = ''
     unset NIX_CFLAGS_COMPILE

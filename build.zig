@@ -35,9 +35,16 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const zig_objc_dep = b.dependency("zig-objc", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("objc", zig_objc_dep.module("objc"));
+
     exe.linkSystemLibrary("gtk4");
     exe.linkSystemLibrary("glib-2.0");
     exe.linkSystemLibrary("gobject-2.0");
+    // exe.linkSystemLibrary("libadwaita-1");
     exe.linkLibC();
 
     // Add GTK4 package
