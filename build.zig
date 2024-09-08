@@ -44,10 +44,15 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("gtk4");
     exe.linkSystemLibrary("glib-2.0");
     exe.linkSystemLibrary("gobject-2.0");
+    exe.linkSystemLibrary("objc");
+    exe.linkFramework("Cocoa");
+    exe.linkFramework("Foundation");
+    exe.linkFramework("AppKit");
     // exe.linkSystemLibrary("libadwaita-1");
     exe.linkLibC();
 
     // Add GTK4 package
+    exe.addIncludePath(b.path("src"));
     exe.addIncludePath(b.path("gtk-4.0"));
     exe.addIncludePath(b.path("glib-2.0"));
     exe.addIncludePath(b.path("glib-2.0/include"));
@@ -56,6 +61,30 @@ pub fn build(b: *std.Build) void {
     exe.addIncludePath(b.path("harfbuzz"));
     exe.addIncludePath(b.path("gdk-pixbuf-2.0"));
     exe.addIncludePath(b.path("graphene-1.0"));
+
+    const gtk_flags = [_][]const u8{
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/gtk-4.0",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/glib-2.0",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/lib/glib-2.0/include",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/cairo",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/pango-1.0",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/harfbuzz",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/gdk-pixbuf-2.0",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/graphene-1.0",
+        "-I/nix/store/4c0qywz3jnrsfmqlii6lj3wmj5jnvflg-gtk4-4.14.3-dev/include/gdk-4.0",
+    };
+
+    const objc_flags = [_][]const u8{ "-x", "objective-c", "-fobjc-arc" };
+    exe.addCSourceFile(.{ .file = b.path("src/cocoa_titlebar.m"), .flags = &(objc_flags ++ gtk_flags) });
+
+    // exe.addCSourceFile(.{ .file = b.path("src/cocoa_titlebar.m"), .flags = &[_][]const u8{
+    //     "-framework",                        "Cocoa",
+    //     "-fobjc-arc",                        "-I/usr/local/include/gtk-4.0",
+    //     "-I/usr/local/include/glib-2.0",     "-I/usr/local/lib/glib-2.0/include",
+    //     "-I/usr/local/include/cairo",        "-I/usr/local/include/pango-1.0",
+    //     "-I/usr/local/include/harfbuzz",     "-I/usr/local/include/gdk-pixbuf-2.0",
+    //     "-I/usr/local/include/graphene-1.0", "-Isrc",
+    // } });
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
