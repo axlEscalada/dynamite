@@ -2,10 +2,6 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("gtk/gtk.h");
 });
-const objc = @import("objc");
-// const adw = @cImport({
-//     @cInclude("adwaita.h");
-// });
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
 const gtk = @import("gtk.zig");
@@ -80,11 +76,14 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_window_set_default_size(main_window.window, 300, 400);
     c.gtk_entry_set_placeholder_text(main_window.entry, "Insert table name...");
 
-    const header_bar = c.gtk_header_bar_new();
-    const title_label = c.gtk_label_new("Dynamite");
-    c.gtk_window_set_titlebar(gtk.GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
-    c.gtk_header_bar_set_title_widget(gtk.GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
-    c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
+    // Remove default titlebar
+    // c.gtk_window_set_decorated(main_window.window, 0);
+
+    // const header_bar = c.gtk_header_bar_new();
+    // const title_label = c.gtk_label_new("Dynamite");
+    // c.gtk_window_set_titlebar(gtk.GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
+    // c.gtk_header_bar_set_title_widget(gtk.GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
+    // c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
@@ -115,6 +114,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_add_css_class(@ptrCast(main_window.entry), "create-entry");
     c.gtk_widget_add_css_class(@ptrCast(main_window.confirm_button), "create-button");
     c.gtk_widget_add_css_class(@ptrCast(main_window.create_button), "create-button");
+    c.gtk_widget_add_css_class(@ptrCast(@alignCast(main_window.list_box)), "boxed-list");
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.entry));
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
@@ -132,12 +132,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_box_append(@ptrCast(table_box), @ptrCast(table_name_label));
 
     const tree_view = c.gtk_tree_view_new();
-    if (tree_view == null) {
-        std.debug.print("Failed to create detail tree view\n", .{});
-        return;
-    }
     c.gtk_widget_add_css_class(@ptrCast(tree_view), "table-list");
-    // c.gtk_box_append(@ptrCast(table_box), tree_view);
     c.gtk_scrolled_window_set_child(@ptrCast(table_scrolled_window), @alignCast(@ptrCast(tree_view)));
     c.gtk_widget_set_vexpand(@ptrCast(table_scrolled_window), 1);
     c.gtk_box_append(@ptrCast(table_box), table_scrolled_window);
@@ -621,6 +616,7 @@ pub fn main() !void {
 //
 //     // Insert an item
 //     var item = std.StringHashMap(DataValue).init(allocator);
+//
 //     defer item.deinit();
 //     try item.put("id", .{ .data_type = .S, .value = "3" });
 //     try item.put("name", .{ .data_type = .S, .value = "axl" });
