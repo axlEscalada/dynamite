@@ -35,20 +35,33 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const sqlite = b.dependency("sqlite", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe.root_module.addImport("sqlite", sqlite.module("sqlite"));
+
+    // links the bundled sqlite3, so leave this out if you link the system one
+    exe.linkLibrary(sqlite.artifact("sqlite"));
+
     exe.linkSystemLibrary("gtk4");
     exe.linkSystemLibrary("glib-2.0");
     exe.linkSystemLibrary("gobject-2.0");
+    exe.linkSystemLibrary("libadwaita-1");
+    // exe.linkSystemLibrary("sqlite3")    // Add necessary C macros and flags
     exe.linkLibC();
 
     // Add GTK4 package
-    exe.addIncludePath(b.path("gtk-4.0"));
-    exe.addIncludePath(b.path("glib-2.0"));
-    exe.addIncludePath(b.path("glib-2.0/include"));
-    exe.addIncludePath(b.path("cairo"));
-    exe.addIncludePath(b.path("pango-1.0"));
-    exe.addIncludePath(b.path("harfbuzz"));
-    exe.addIncludePath(b.path("gdk-pixbuf-2.0"));
-    exe.addIncludePath(b.path("graphene-1.0"));
+    // exe.addIncludePath(b.path("gtk-4.0"));
+    // exe.addIncludePath(b.path("glib-2.0"));
+    // exe.addIncludePath(b.path("glib-2.0/include"));
+    // exe.addIncludePath(b.path("cairo"));
+    // exe.addIncludePath(b.path("pango-1.0"));
+    // exe.addIncludePath(b.path("harfbuzz"));
+    // exe.addIncludePath(b.path("gdk-pixbuf-2.0"));
+    // exe.addIncludePath(b.path("graphene-1.0"));
+    // exe.addIncludePath(b.path("sqlite"));
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

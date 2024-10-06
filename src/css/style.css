@@ -1,9 +1,10 @@
 * {
-  font-size: 13px;
+  font-size: 12px;
+  font-family: Verdana;
 }
 
 .header {
-  color: #ffffff;
+  background-image: linear-gradient(90deg, #5a5b5b, #1d1d1d);
   border-bottom: 1px solid #0f0f0f;
   padding: 0px;
   min-height: 20px;

@@ -1,11 +1,19 @@
 const std = @import("std");
 const c = @cImport({
+    @cDefine("__GDKMACOS_H_INSIDE__", "1");
+    @cDefine("GTK_COMPILATION", "1");
+
     @cInclude("gtk/gtk.h");
+    @cInclude("gdk/gdk.h");
+    @cInclude("gdk/macos/gdkmacos.h");
+
+    // Undefine the macros after including the headers
+    @cUndef("__GDKMACOS_H_INSIDE__");
+    @cUndef("GTK_COMPILATION");
+    @cInclude("adwaita.h");
+    @cInclude("sqlite3.h");
 });
-const objc = @import("objc");
-// const adw = @cImport({
-//     @cInclude("adwaita.h");
-// });
+const sqlite = @import("sqlite");
 const DynamoDbClient = @import("dynamo_client.zig").DynamoDbClient;
 const DataValue = @import("dynamo_client.zig").DataValue;
 const gtk = @import("gtk.zig");
@@ -31,12 +39,61 @@ const MainWindow = struct {
 };
 
 var main_window: MainWindow = undefined;
-
+var db: ?*c.sqlite3 = undefined;
 var credentials: AwsConfiguration = undefined;
 const URL_DYNAMO = "http://localhost:4566";
 // const URL_DYNAMO = null;
+//
+
+fn initDB() void {
+    const path = "/Users/axel.escalada/mydb.db";
+    var flags: c_int = c.SQLITE_OPEN_URI;
+    flags |= @as(c_int, c.SQLITE_OPEN_READWRITE);
+    flags |= c.SQLITE_OPEN_CREATE;
+    _ = c.sqlite3_open_v2(path.ptr, &db, flags, null);
+
+    const query =
+        \\CREATE TABLE IF NOT EXISTS connections (
+        \\  id INTEGER PRIMARY KEY,
+        \\  access_key TEXT NOT NULL,
+        \\  secret_key TEXT NOT NULL,
+        \\  session_token TEXT,
+        \\  region TEXT,
+        \\  url TEXT
+        \\);
+    ;
+    const stmt = blk: {
+        var tmp: ?*c.sqlite3_stmt = undefined;
+        const result = c.sqlite3_prepare_v3(
+            db,
+            query.ptr,
+            @intCast(query.len),
+            0,
+            &tmp,
+            null,
+        );
+        if (result != c.SQLITE_OK) {
+            std.log.err("Error preparing query\n", .{});
+            return;
+        }
+        break :blk tmp.?;
+    };
+    const result = c.sqlite3_step(stmt);
+    switch (result) {
+        c.SQLITE_DONE => {},
+        c.SQLITE_ROW => {
+            std.log.err("Error creating table: {}\n", .{result});
+            return;
+        },
+        else => {
+            std.log.err("Error creating table: {}\n", .{result});
+            return;
+        },
+    }
+}
 
 fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
+    _ = user_data;
     const region = std.posix.getenv("AWS_REGION");
     const access_key = std.posix.getenv("AWS_ACCESS_KEY_ID");
     const secret_access_key = std.posix.getenv("AWS_SECRET_ACCESS_KEY");
@@ -57,7 +114,6 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
 
     credentials = AwsConfiguration.init(region, access_key, secret_access_key, session_token);
 
-    _ = user_data;
     loadCss();
 
     //set gtk dark theme by default
@@ -67,6 +123,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
 
     main_window = MainWindow{
         .window = @ptrCast(c.gtk_application_window_new(app)),
+        // .window = @ptrCast(c.adw_application_window_new(app)),
         .stack = @ptrCast(c.gtk_stack_new()),
         .list_box = @ptrCast(c.gtk_list_box_new()),
         .create_button = @ptrCast(c.gtk_button_new_with_label("Create Table")),
@@ -80,17 +137,32 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_window_set_default_size(main_window.window, 300, 400);
     c.gtk_entry_set_placeholder_text(main_window.entry, "Insert table name...");
 
-    const header_bar = c.gtk_header_bar_new();
-    const title_label = c.gtk_label_new("Dynamite");
-    c.gtk_window_set_titlebar(gtk.GTK_WINDOW(@ptrCast(main_window.window)), header_bar);
-    c.gtk_header_bar_set_title_widget(gtk.GTK_HEADER_BAR(@ptrCast(header_bar)), title_label);
-    c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
+    //TODO: implement a custom titlebar with default macos buttons and with a custom color
+    // const header_bar = c.adw_header_bar_new();
+    // const title_label = c.gtk_label_new("Dynamite");
+    // c.gtk_window_set_titlebar(@ptrCast(main_window.window), header_bar);
+    // c.gtk_header_bar_set_title_widget(@ptrCast(header_bar), title_label);
+    // c.gtk_widget_add_css_class(@ptrCast(header_bar), "header");
 
+    //Principal view
     const main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(main_box), 10);
     c.gtk_widget_set_margin_end(@ptrCast(main_box), 10);
     c.gtk_widget_set_margin_top(@ptrCast(main_box), 10);
     c.gtk_widget_set_margin_bottom(@ptrCast(main_box), 10);
+
+    const create_connection_button = c.gtk_button_new_with_label("Add connection");
+    c.gtk_widget_add_css_class(@ptrCast(create_connection_button), "adw-button");
+    //
+    //Append to principal view
+    c.gtk_box_append(@ptrCast(main_box), @ptrCast(create_connection_button));
+
+    //Selected connection view
+    const connection_main_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
+    c.gtk_widget_set_margin_start(@ptrCast(connection_main_box), 10);
+    c.gtk_widget_set_margin_end(@ptrCast(connection_main_box), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(connection_main_box), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(connection_main_box), 10);
 
     //This view hold the tables listed on dynamo
     const scrolled_window = c.gtk_scrolled_window_new();
@@ -98,13 +170,13 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_vexpand(@ptrCast(scrolled_window), 1);
 
     const search_entry = c.gtk_search_entry_new();
-    c.gtk_box_append(@ptrCast(main_box), @ptrCast(search_entry));
+    c.gtk_box_append(@ptrCast(connection_main_box), @ptrCast(search_entry));
 
     c.gtk_list_box_set_filter_func(main_window.list_box, filterTableItems, search_entry, null);
 
-    c.gtk_box_append(@ptrCast(main_box), @ptrCast(scrolled_window));
+    c.gtk_box_append(@ptrCast(connection_main_box), @ptrCast(scrolled_window));
+    c.gtk_box_append(@ptrCast(connection_main_box), @ptrCast(main_window.create_button));
     c.gtk_widget_set_margin_top(@ptrCast(main_window.create_button), 10);
-    c.gtk_box_append(@ptrCast(main_box), @ptrCast(main_window.create_button));
 
     const create_box = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 10);
     c.gtk_widget_set_margin_start(@ptrCast(create_box), 10);
@@ -115,6 +187,7 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_add_css_class(@ptrCast(main_window.entry), "create-entry");
     c.gtk_widget_add_css_class(@ptrCast(main_window.confirm_button), "create-button");
     c.gtk_widget_add_css_class(@ptrCast(main_window.create_button), "create-button");
+    c.gtk_widget_add_css_class(@ptrCast(@alignCast(main_window.list_box)), "boxed-list");
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.entry));
     c.gtk_box_append(@ptrCast(create_box), @alignCast(@ptrCast(main_window.label)));
     c.gtk_box_append(@ptrCast(create_box), @ptrCast(main_window.confirm_button));
@@ -142,13 +215,22 @@ fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     c.gtk_widget_set_vexpand(@ptrCast(table_scrolled_window), 1);
     c.gtk_box_append(@ptrCast(table_box), table_scrolled_window);
 
+    const create_connection_overlay = c.adw_overlay_split_view_new();
+    c.gtk_widget_set_margin_start(@ptrCast(create_connection_overlay), 10);
+    c.gtk_widget_set_margin_end(@ptrCast(create_connection_overlay), 10);
+    c.gtk_widget_set_margin_top(@ptrCast(create_connection_overlay), 10);
+    c.gtk_widget_set_margin_bottom(@ptrCast(create_connection_overlay), 10);
+
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(main_box), "main");
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_connection_overlay)), "create_connection");
+    _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(connection_main_box)), "connection");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(create_box)), "create");
     _ = c.gtk_stack_add_named(main_window.stack, @ptrCast(createViewWithBackButton(table_box)), "table");
 
     c.gtk_window_set_child(main_window.window, @alignCast(@ptrCast(main_window.stack)));
 
     _ = c.g_signal_connect_data(@ptrCast(main_window.create_button), "clicked", @ptrCast(&switchToCreateView), null, null, 0);
+    _ = c.g_signal_connect_data(@ptrCast(create_connection_button), "clicked", @ptrCast(&createConnectionWindow), null, null, 0);
     _ = c.g_signal_connect_data(@ptrCast(main_window.confirm_button), "clicked", @ptrCast(&createTable), null, null, 0);
     // c.gtk_list_box_set_activate_on_single_click(main_window.list_box, 0);
     const table_view_data = global_allocator.create(TableViewData) catch |e| {
@@ -287,6 +369,184 @@ fn switchToMainView(button: ?*c.GtkButton, user_data: ?*anyopaque) callconv(.C) 
     c.gtk_stack_set_visible_child_name(main_window.stack, "main");
 }
 
+fn center_window(window: *c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void {
+    _ = user_data;
+
+    const parent = c.gtk_window_get_transient_for(@ptrCast(window));
+    if (parent == null) return;
+
+    var parent_width: c_int = undefined;
+    var parent_height: c_int = undefined;
+    c.gtk_window_get_default_size(@ptrCast(parent), &parent_width, &parent_height);
+
+    var window_width: c_int = undefined;
+    var window_height: c_int = undefined;
+    c.gtk_window_get_default_size(@ptrCast(window), &window_width, &window_height);
+
+    const parent_root = c.gtk_widget_get_root(@ptrCast(parent));
+    var parent_x: f64 = undefined;
+    var parent_y: f64 = undefined;
+    c.gtk_native_get_surface_transform(@ptrCast(parent_root), &parent_x, &parent_y);
+
+    const x = @as(c_int, @intFromFloat(parent_x)) + @divTrunc(parent_width - window_width, 2);
+    const y = @as(c_int, @intFromFloat(parent_y)) + @divTrunc(parent_height - window_height, 2);
+
+    c.gtk_window_set_default_size(@ptrCast(window), window_width, window_height);
+    c.gtk_widget_set_margin_start(window, x);
+    c.gtk_widget_set_margin_top(window, y);
+}
+
+const ConnectionData = struct {
+    access_key_row: *c.GtkEditable,
+    secret_key_row: *c.GtkEditable,
+    session_token_row: *c.GtkEditable,
+    region_row: *c.GtkEditable,
+    url_row: *c.GtkEditable,
+    floating_window: *c.GtkWindow,
+};
+
+fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+    _ = button;
+    _ = user_data;
+
+    const floating_window = c.adw_window_new() orelse {
+        std.debug.print("Failed to create floating window\n", .{});
+        return;
+    };
+
+    c.gtk_window_set_title(@ptrCast(floating_window), "Create Connection");
+
+    // Set size
+    c.gtk_window_set_default_size(@ptrCast(floating_window), 350, 400);
+    c.gtk_window_set_resizable(@ptrCast(floating_window), 0);
+
+    // Set the floating window as transient for the main window
+    c.gtk_window_set_transient_for(@ptrCast(floating_window), @ptrCast(main_window.window));
+
+    // Set the window as modal to dim the background
+    c.gtk_window_set_modal(@ptrCast(floating_window), 1);
+
+    // Ensure the dialog is closed if the main window is closed
+    c.gtk_window_set_destroy_with_parent(@ptrCast(floating_window), 1);
+
+    // Create main content box
+    const content = c.gtk_box_new(c.GTK_ORIENTATION_VERTICAL, 0);
+
+    // Create AdwPreferencesGroup for input fields
+    const group = c.adw_preferences_group_new();
+    c.adw_preferences_group_set_title(@ptrCast(group), "Connection Details");
+
+    // Create entry rows
+    // Create entry rows
+    const access_key_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(access_key_row), "Access Key");
+
+    const secret_key_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(secret_key_row), "Secret Key");
+
+    const session_token_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(session_token_row), "Session Token");
+
+    const region_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(region_row), "Region");
+
+    const url_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(url_row), "URL");
+
+    // Add rows to the group
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(access_key_row));
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(secret_key_row));
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(session_token_row));
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(region_row));
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(url_row));
+
+    // Add group to content
+    c.gtk_box_append(@ptrCast(content), @ptrCast(group));
+
+    // Create "Create" button
+    const create_button = c.gtk_button_new_with_label("Create");
+    c.gtk_widget_set_margin_top(create_button, 20);
+    c.gtk_widget_set_margin_bottom(create_button, 20);
+    c.gtk_widget_set_margin_start(create_button, 20);
+    c.gtk_widget_set_margin_end(create_button, 20);
+    c.gtk_widget_set_halign(create_button, c.GTK_ALIGN_END);
+    c.gtk_button_set_has_frame(@ptrCast(create_button), 1);
+    c.gtk_box_append(@ptrCast(content), create_button);
+
+    // Allocate memory for ConnectionData
+    const connection_data = c.g_malloc(@sizeOf(ConnectionData)) orelse {
+        std.debug.print("Failed to allocate memory for ConnectionData\n", .{});
+        return;
+    };
+
+    // Initialize ConnectionData
+    const data = @as(*ConnectionData, @ptrCast(@alignCast(connection_data)));
+
+    data.* = ConnectionData{
+        .access_key_row = @ptrCast(access_key_row),
+        .secret_key_row = @ptrCast(secret_key_row),
+        .session_token_row = @ptrCast(session_token_row),
+        .region_row = @ptrCast(region_row),
+        .url_row = @ptrCast(url_row),
+        .floating_window = @ptrCast(floating_window),
+    };
+
+    _ = c.g_signal_connect_data(create_button, "clicked", @ptrCast(&create_button_clicked), connection_data, null, c.G_CONNECT_SWAPPED);
+
+    // Create an AdwToolbarView to hold the content
+    const toolbar_view = c.adw_toolbar_view_new();
+    c.adw_toolbar_view_add_top_bar(@ptrCast(toolbar_view), c.gtk_header_bar_new());
+    c.adw_toolbar_view_set_content(@ptrCast(toolbar_view), content);
+
+    // Set the content of the AdwWindow
+    c.adw_window_set_content(@ptrCast(floating_window), toolbar_view);
+
+    // Show the window
+    c.gtk_widget_show(@ptrCast(floating_window));
+}
+
+fn create_button_clicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+    _ = button;
+    const data = @as(*[6]*c.GtkWidget, @ptrCast(@alignCast(user_data.?)));
+
+    const access_key = c.gtk_editable_get_text(@ptrCast(data[0]));
+    const secret_key = c.gtk_editable_get_text(@ptrCast(data[1]));
+    const session_token = c.gtk_editable_get_text(@ptrCast(data[2]));
+    const region = c.gtk_editable_get_text(@ptrCast(data[3]));
+    const url = c.gtk_editable_get_text(@ptrCast(data[4]));
+
+    insert_connection(access_key, secret_key, session_token, region, url) catch |err| {
+        std.debug.print("Error inserting connection: {}\n", .{err});
+        return;
+    };
+
+    // Close the floating window
+    c.gtk_window_close(@ptrCast(data[5]));
+}
+
+fn insert_connection(access_key: [*:0]const u8, secret_key: [*:0]const u8, session_token: [*:0]const u8, region: [*:0]const u8, url: [*:0]const u8) !void {
+    const query = "INSERT INTO connections (access_key, secret_key, session_token, region, url) VALUES (?, ?, ?, ?, ?)";
+    var stmt: ?*c.sqlite3_stmt = null;
+
+    if (c.sqlite3_prepare_v2(db, query, -1, &stmt, null) != c.SQLITE_OK) {
+        return error.SQLitePrepareError;
+    }
+    defer _ = c.sqlite3_finalize(stmt);
+
+    if (c.sqlite3_bind_text(stmt, 1, access_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
+        c.sqlite3_bind_text(stmt, 2, secret_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
+        c.sqlite3_bind_text(stmt, 3, session_token, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
+        c.sqlite3_bind_text(stmt, 4, region, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
+        c.sqlite3_bind_text(stmt, 5, url, -1, c.SQLITE_STATIC) != c.SQLITE_OK)
+    {
+        return error.SQLiteBindError;
+    }
+
+    if (c.sqlite3_step(stmt) != c.SQLITE_DONE) {
+        return error.SQLiteExecuteError;
+    }
+}
+
 const TableViewData = struct {
     tree_view: *c.GtkTreeView,
     table_name_label: *c.GtkLabel,
@@ -379,7 +639,7 @@ fn switchToTableView(
 
     c.gtk_stack_set_visible_child_name(main_window.stack, "table");
     //workaround for macOS
-    if (builtin.target.os.tag == .macos) {
+    if (comptime builtin.target.os.tag == .macos) {
         gtk.proccessPendingEvents();
     }
 }
@@ -582,6 +842,9 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     global_allocator = gpa.allocator();
 
+    // Init db connection
+    initDB();
+
     // Enable GTK debugging
     _ = c.g_setenv("G_MESSAGES_DEBUG", "all", 1);
     _ = c.g_log_set_handler("Gtk", c.G_LOG_LEVEL_MASK, debug_handler, null);
@@ -589,7 +852,8 @@ pub fn main() !void {
     _ = c.g_log_set_handler("Gdk", c.G_LOG_LEVEL_MASK, debug_handler, null);
     _ = c.g_log_set_handler("GObject", c.G_LOG_LEVEL_MASK, debug_handler, null);
 
-    const app = c.gtk_application_new("com.example.GtkApplication", c.G_APPLICATION_FLAGS_NONE);
+    // const app = c.gtk_application_new("com.example.GtkApplication", c.G_APPLICATION_FLAGS_NONE);
+    const app = c.adw_application_new("com.example.GtkApplication", c.G_APPLICATION_FLAGS_NONE);
     if (app == null) {
         std.debug.print("Failed to create GtkApplication\n", .{});
         return error.GtkApplicationCreateFailed;

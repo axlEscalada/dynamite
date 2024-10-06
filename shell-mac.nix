@@ -2,6 +2,7 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     # GTK and its dependencies
+    libadwaita
     gtk4
     glib
     pango
@@ -10,6 +11,8 @@ pkgs.mkShell {
     gdk-pixbuf
     pkg-config
     gtk-mac-integration
+    sqlite
+    darwin.apple_sdk.frameworks.Cocoa
   ];
   shellHook = ''
     unset NIX_CFLAGS_COMPILE
