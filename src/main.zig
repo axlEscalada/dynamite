@@ -528,11 +528,27 @@ fn create_button_clicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(
 
 fn insert_connection(access_key: [*:0]const u8, secret_key: [*:0]const u8, session_token: [*:0]const u8, region: [*:0]const u8, url: [*:0]const u8) !void {
     const query = "INSERT INTO connections (access_key, secret_key, session_token, region, url) VALUES (?, ?, ?, ?, ?)";
-    var stmt: ?*c.sqlite3_stmt = null;
+    // var stmt: ?*c.sqlite3_stmt = null;
+    const stmt = blk: {
+        var tmp: ?*c.sqlite3_stmt = undefined;
+        const result = c.sqlite3_prepare_v3(
+            db,
+            query.ptr,
+            @intCast(query.len),
+            0,
+            &tmp,
+            null,
+        );
+        if (result != c.SQLITE_OK) {
+            std.log.err("Error preparing query\n", .{});
+            return;
+        }
+        break :blk tmp.?;
+    };
 
-    if (c.sqlite3_prepare_v2(db, query, -1, &stmt, null) != c.SQLITE_OK) {
-        return error.SQLitePrepareError;
-    }
+    // if (c.sqlite3_prepare_v2(db, query, -1, &stmt, null) != c.SQLITE_OK) {
+    //     return error.SQLitePrepareError;
+    // }
     defer _ = c.sqlite3_finalize(stmt);
 
     if (c.sqlite3_bind_text(stmt, 1, access_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
