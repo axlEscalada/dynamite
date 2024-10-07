@@ -1,11 +1,11 @@
 const std = @import("std");
 const c = @cImport({
-    @cDefine("__GDKMACOS_H_INSIDE__", "1");
-    @cDefine("GTK_COMPILATION", "1");
+    // @cDefine("__GDKMACOS_H_INSIDE__", "1");
+    // @cDefine("GTK_COMPILATION", "1");
 
     @cInclude("gtk/gtk.h");
     @cInclude("gdk/gdk.h");
-    @cInclude("gdk/macos/gdkmacos.h");
+    // @cInclude("gdk/macos/gdkmacos.h");
 
     // Undefine the macros after including the headers
     @cUndef("__GDKMACOS_H_INSIDE__");
@@ -482,7 +482,7 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
     // Initialize ConnectionData
     const data = @as(*ConnectionData, @ptrCast(@alignCast(connection_data)));
 
-    data.* = ConnectionData{
+    data.* = .{
         .access_key_row = @ptrCast(access_key_row),
         .secret_key_row = @ptrCast(secret_key_row),
         .session_token_row = @ptrCast(session_token_row),
@@ -491,7 +491,7 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
         .floating_window = @ptrCast(floating_window),
     };
 
-    _ = c.g_signal_connect_data(create_button, "clicked", @ptrCast(&create_button_clicked), connection_data, null, c.G_CONNECT_SWAPPED);
+    _ = c.g_signal_connect_data(create_button, "clicked", @ptrCast(&create_button_clicked), connection_data, null, c.G_CONNECT_AFTER);
 
     // Create an AdwToolbarView to hold the content
     const toolbar_view = c.adw_toolbar_view_new();
@@ -508,8 +508,10 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
 fn create_button_clicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
     _ = button;
     const data = @as(*[6]*c.GtkWidget, @ptrCast(@alignCast(user_data.?)));
+    std.debug.print("user data {any}\n", .{data});
 
     const access_key = c.gtk_editable_get_text(@ptrCast(data[0]));
+    std.debug.print("acces key {s}\n", .{access_key});
     const secret_key = c.gtk_editable_get_text(@ptrCast(data[1]));
     const session_token = c.gtk_editable_get_text(@ptrCast(data[2]));
     const region = c.gtk_editable_get_text(@ptrCast(data[3]));

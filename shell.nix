@@ -1,4 +1,4 @@
-{pkgs ? import <nixpkgs> {}}:
+{ pkgs ? import <nixpkgs> { } }:
 pkgs.mkShell {
   buildInputs = with pkgs; [
     # GTK and its dependencies
@@ -8,6 +8,9 @@ pkgs.mkShell {
     cairo
     graphene
     gdk-pixbuf
+    libadwaita
+
+    sqlite
 
     # Development tools
     pkg-config

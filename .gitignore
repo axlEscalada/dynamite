@@ -1,3 +1,4 @@
 .localstack/
 .zig-cache/
 zig-out/
+dynamodb_env/
