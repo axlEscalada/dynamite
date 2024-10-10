@@ -546,9 +546,6 @@ fn insert_connection(access_key: [*:0]const u8, secret_key: [*:0]const u8, sessi
         break :blk tmp.?;
     };
 
-    // if (c.sqlite3_prepare_v2(db, query, -1, &stmt, null) != c.SQLITE_OK) {
-    //     return error.SQLitePrepareError;
-    // }
     defer _ = c.sqlite3_finalize(stmt);
 
     if (c.sqlite3_bind_text(stmt, 1, access_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
