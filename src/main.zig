@@ -1,15 +1,7 @@
 const std = @import("std");
 const c = @cImport({
-    // @cDefine("__GDKMACOS_H_INSIDE__", "1");
-    // @cDefine("GTK_COMPILATION", "1");
-
     @cInclude("gtk/gtk.h");
     @cInclude("gdk/gdk.h");
-    // @cInclude("gdk/macos/gdkmacos.h");
-
-    // Undefine the macros after including the headers
-    @cUndef("__GDKMACOS_H_INSIDE__");
-    @cUndef("GTK_COMPILATION");
     @cInclude("adwaita.h");
     @cInclude("sqlite3.h");
 });
@@ -21,9 +13,11 @@ const builtin = @import("builtin");
 const ArrayList = std.ArrayList;
 const StringHashMap = std.StringHashMap;
 const AwsConfiguration = @import("dynamo_client.zig").Configuration;
+const DbManager = @import("connection.zig").DbManager;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_allocator: std.mem.Allocator = undefined;
+var db_manager: DbManager = undefined;
 
 var click_count: u32 = 0;
 
@@ -39,58 +33,8 @@ const MainWindow = struct {
 };
 
 var main_window: MainWindow = undefined;
-var db: ?*c.sqlite3 = undefined;
 var credentials: AwsConfiguration = undefined;
 const URL_DYNAMO = "http://localhost:4566";
-// const URL_DYNAMO = null;
-//
-
-fn initDB() void {
-    const path = "/Users/axel.escalada/mydb.db";
-    var flags: c_int = c.SQLITE_OPEN_URI;
-    flags |= @as(c_int, c.SQLITE_OPEN_READWRITE);
-    flags |= c.SQLITE_OPEN_CREATE;
-    _ = c.sqlite3_open_v2(path.ptr, &db, flags, null);
-
-    const query =
-        \\CREATE TABLE IF NOT EXISTS connections (
-        \\  id INTEGER PRIMARY KEY,
-        \\  access_key TEXT NOT NULL,
-        \\  secret_key TEXT NOT NULL,
-        \\  session_token TEXT,
-        \\  region TEXT,
-        \\  url TEXT
-        \\);
-    ;
-    const stmt = blk: {
-        var tmp: ?*c.sqlite3_stmt = undefined;
-        const result = c.sqlite3_prepare_v3(
-            db,
-            query.ptr,
-            @intCast(query.len),
-            0,
-            &tmp,
-            null,
-        );
-        if (result != c.SQLITE_OK) {
-            std.log.err("Error preparing query\n", .{});
-            return;
-        }
-        break :blk tmp.?;
-    };
-    const result = c.sqlite3_step(stmt);
-    switch (result) {
-        c.SQLITE_DONE => {},
-        c.SQLITE_ROW => {
-            std.log.err("Error creating table: {}\n", .{result});
-            return;
-        },
-        else => {
-            std.log.err("Error creating table: {}\n", .{result});
-            return;
-        },
-    }
-}
 
 fn activate(app: ?*c.GtkApplication, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
@@ -397,6 +341,7 @@ fn center_window(window: *c.GtkWidget, user_data: ?*anyopaque) callconv(.C) void
 }
 
 const ConnectionData = struct {
+    name_row: *c.GtkEditable,
     access_key_row: *c.GtkEditable,
     secret_key_row: *c.GtkEditable,
     session_token_row: *c.GtkEditable,
@@ -437,7 +382,9 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
     c.adw_preferences_group_set_title(@ptrCast(group), "Connection Details");
 
     // Create entry rows
-    // Create entry rows
+    const name_row = c.adw_entry_row_new();
+    c.adw_preferences_row_set_title(@ptrCast(name_row), "Connection name");
+
     const access_key_row = c.adw_entry_row_new();
     c.adw_preferences_row_set_title(@ptrCast(access_key_row), "Access Key");
 
@@ -454,6 +401,7 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
     c.adw_preferences_row_set_title(@ptrCast(url_row), "URL");
 
     // Add rows to the group
+    c.adw_preferences_group_add(@ptrCast(group), @ptrCast(name_row));
     c.adw_preferences_group_add(@ptrCast(group), @ptrCast(access_key_row));
     c.adw_preferences_group_add(@ptrCast(group), @ptrCast(secret_key_row));
     c.adw_preferences_group_add(@ptrCast(group), @ptrCast(session_token_row));
@@ -483,6 +431,7 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
     const data = @as(*ConnectionData, @ptrCast(@alignCast(connection_data)));
 
     data.* = .{
+        .name_row = @ptrCast(name_row),
         .access_key_row = @ptrCast(access_key_row),
         .secret_key_row = @ptrCast(secret_key_row),
         .session_token_row = @ptrCast(session_token_row),
@@ -491,7 +440,7 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
         .floating_window = @ptrCast(floating_window),
     };
 
-    _ = c.g_signal_connect_data(create_button, "clicked", @ptrCast(&create_button_clicked), connection_data, null, c.G_CONNECT_AFTER);
+    _ = c.g_signal_connect_data(create_button, "clicked", @ptrCast(&createConnection), connection_data, null, c.G_CONNECT_AFTER);
 
     // Create an AdwToolbarView to hold the content
     const toolbar_view = c.adw_toolbar_view_new();
@@ -505,61 +454,25 @@ fn createConnectionWindow(button: *c.GtkButton, user_data: ?*anyopaque) callconv
     c.gtk_widget_show(@ptrCast(floating_window));
 }
 
-fn create_button_clicked(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
+fn createConnection(button: *c.GtkButton, user_data: ?*anyopaque) callconv(.C) void {
     _ = button;
     const data = @as(*[6]*c.GtkWidget, @ptrCast(@alignCast(user_data.?)));
     std.debug.print("user data {any}\n", .{data});
 
-    const access_key = c.gtk_editable_get_text(@ptrCast(data[0]));
+    const name = c.gtk_editable_get_text(@ptrCast(data[0]));
+    const access_key = c.gtk_editable_get_text(@ptrCast(data[1]));
     std.debug.print("acces key {s}\n", .{access_key});
-    const secret_key = c.gtk_editable_get_text(@ptrCast(data[1]));
-    const session_token = c.gtk_editable_get_text(@ptrCast(data[2]));
-    const region = c.gtk_editable_get_text(@ptrCast(data[3]));
-    const url = c.gtk_editable_get_text(@ptrCast(data[4]));
+    const secret_key = c.gtk_editable_get_text(@ptrCast(data[2]));
+    const session_token = c.gtk_editable_get_text(@ptrCast(data[3]));
+    const region = c.gtk_editable_get_text(@ptrCast(data[4]));
+    const url = c.gtk_editable_get_text(@ptrCast(data[5]));
 
-    insert_connection(access_key, secret_key, session_token, region, url) catch |err| {
+    db_manager.insertConnection(name, access_key, secret_key, session_token, region, url) catch |err| {
         std.debug.print("Error inserting connection: {}\n", .{err});
         return;
     };
 
-    // Close the floating window
     c.gtk_window_close(@ptrCast(data[5]));
-}
-
-fn insert_connection(access_key: [*:0]const u8, secret_key: [*:0]const u8, session_token: [*:0]const u8, region: [*:0]const u8, url: [*:0]const u8) !void {
-    const query = "INSERT INTO connections (access_key, secret_key, session_token, region, url) VALUES (?, ?, ?, ?, ?)";
-    // var stmt: ?*c.sqlite3_stmt = null;
-    const stmt = blk: {
-        var tmp: ?*c.sqlite3_stmt = undefined;
-        const result = c.sqlite3_prepare_v3(
-            db,
-            query.ptr,
-            @intCast(query.len),
-            0,
-            &tmp,
-            null,
-        );
-        if (result != c.SQLITE_OK) {
-            std.log.err("Error preparing query\n", .{});
-            return;
-        }
-        break :blk tmp.?;
-    };
-
-    defer _ = c.sqlite3_finalize(stmt);
-
-    if (c.sqlite3_bind_text(stmt, 1, access_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
-        c.sqlite3_bind_text(stmt, 2, secret_key, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
-        c.sqlite3_bind_text(stmt, 3, session_token, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
-        c.sqlite3_bind_text(stmt, 4, region, -1, c.SQLITE_STATIC) != c.SQLITE_OK or
-        c.sqlite3_bind_text(stmt, 5, url, -1, c.SQLITE_STATIC) != c.SQLITE_OK)
-    {
-        return error.SQLiteBindError;
-    }
-
-    if (c.sqlite3_step(stmt) != c.SQLITE_DONE) {
-        return error.SQLiteExecuteError;
-    }
 }
 
 const TableViewData = struct {
@@ -858,7 +771,8 @@ pub fn main() !void {
     global_allocator = gpa.allocator();
 
     // Init db connection
-    initDB();
+    db_manager = DbManager.init(global_allocator);
+    try db_manager.initDB();
 
     // Enable GTK debugging
     _ = c.g_setenv("G_MESSAGES_DEBUG", "all", 1);
@@ -886,25 +800,3 @@ pub fn main() !void {
         return error.ApplicationRunFailed;
     }
 }
-
-// pub fn main() !void {
-//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-//     defer _ = gpa.deinit();
-//     const allocator = gpa.allocator();
-//
-//     var client = DynamoDbClient.init(allocator, "http://localhost:4566");
-//
-//     // Create a table
-//     // try client.createTable("Dogs", "id");
-//     // std.debug.print("Table created successfully\n", .{});
-//
-//     // Insert an item
-//     var item = std.StringHashMap(DataValue).init(allocator);
-//     defer item.deinit();
-//     try item.put("id", .{ .data_type = .S, .value = "3" });
-//     try item.put("name", .{ .data_type = .S, .value = "axl" });
-//     try item.put("email", .{ .data_type = .S, .value = "axl@gmail.com" });
-//
-//     try client.putItem("Users", item);
-//     std.debug.print("Item inserted successfully\n", .{});
-// }
