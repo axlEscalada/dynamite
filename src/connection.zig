@@ -39,7 +39,6 @@ pub const DbManager = struct {
 
         std.debug.print("Using database path: {s}\n", .{db_path});
 
-        // Convert path to null-terminated string for SQLite
         const path_z = try self.allocator.dupeZ(u8, db_path);
         defer self.allocator.free(path_z);
 
@@ -201,18 +200,15 @@ pub const DbManager = struct {
         return switch (builtin.target.os.tag) {
             .macos => {
                 const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
-                return try std.fmt.allocPrint(self.allocator, "{s}/Library/Application Support/Dynamite", // Changed YourAppName to Dynamite
-                    .{home});
+                return try std.fmt.allocPrint(self.allocator, "{s}/Library/Application Support/Dynamite", .{home});
             },
             .linux => {
                 const xdg_data = std.posix.getenv("XDG_DATA_HOME");
                 if (xdg_data) |dir| {
-                    return try std.fmt.allocPrint(self.allocator, "{s}/Dynamite", // Changed YourAppName to Dynamite
-                        .{dir});
+                    return try std.fmt.allocPrint(self.allocator, "{s}/Dynamite", .{dir});
                 }
                 const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
-                return try std.fmt.allocPrint(self.allocator, "{s}/.local/share/Dynamite", // Changed YourAppName to Dynamite
-                    .{home});
+                return try std.fmt.allocPrint(self.allocator, "{s}/.local/share/Dynamite", .{home});
             },
             else => return error.UnsupportedOS,
         };
